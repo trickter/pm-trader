@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { getDashboardState, getRiskSettings } from "@/lib/db/settings";
 import { discoverMarkets } from "@/lib/polymarket/gamma";
 import { getMarketQuote } from "@/lib/polymarket/clob-public";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatDate, formatNumber, truncateHash } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         </form>
       }
     >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="策略总数" value={dashboard.strategiesCount} hint="来源: local DB" />
         <StatCard label="启用策略" value={dashboard.enabledStrategiesCount} hint="来源: local DB" />
         <StatCard label="紧急停止" value={<StatusPill tone={risk.emergencyStop ? "danger" : "good"}>{risk.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="来源: local DB risk settings" />
@@ -44,9 +44,9 @@ export default async function DashboardPage() {
             <div className="space-y-5">
               <div>
                 <p className="text-sm text-[var(--muted)]">{selectedMarket.question}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">marketId: {selectedMarket.id}</p>
+                <p className="mt-1 font-mono text-xs text-[var(--muted)]" title={selectedMarket.id}>marketId: {truncateHash(selectedMarket.id, 8, 6)}</p>
               </div>
-              <MarketStats market={selectedMarket} quote={quote} />
+              <MarketStats market={selectedMarket} quote={quote ?? undefined} />
             </div>
           ) : (
             <EmptyState title="暂无实时行情" description="没有可用 market / token，或当前行情请求失败。" />
@@ -84,10 +84,10 @@ export default async function DashboardPage() {
               dashboard.latestOrders.map((order) => (
                 <div key={order.id} className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span>{order.marketId}</span>
+                    <span className="truncate font-mono text-xs" title={order.marketId}>{truncateHash(order.marketId, 8, 6)}</span>
                     <StatusPill tone={order.status === "REJECTED" ? "danger" : "good"}>{order.status}</StatusPill>
                   </div>
-                  <p className="mt-2 text-[var(--muted)]">
+                  <p className="mt-1.5 text-[var(--muted)]">
                     {order.side} {formatNumber(order.size)} @ {formatNumber(order.price)}
                   </p>
                 </div>
@@ -104,10 +104,10 @@ export default async function DashboardPage() {
               dashboard.latestFills.map((fill) => (
                 <div key={fill.id} className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <span>{fill.marketId}</span>
+                    <span className="truncate font-mono text-xs" title={fill.marketId}>{truncateHash(fill.marketId, 8, 6)}</span>
                     <StatusPill tone="good">{fill.source}</StatusPill>
                   </div>
-                  <p className="mt-2 text-[var(--muted)]">
+                  <p className="mt-1.5 text-[var(--muted)]">
                     {fill.side} {formatNumber(fill.size)} @ {formatNumber(fill.price)}
                   </p>
                 </div>

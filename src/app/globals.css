@@ -65,3 +65,18 @@ textarea {
     linear-gradient(90deg, rgba(24, 79, 51, 0.03) 1px, transparent 1px);
   background-size: 22px 22px;
 }
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

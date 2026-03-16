@@ -53,7 +53,7 @@ export default async function MarketsPage({
         </SectionCard>
       ) : null}
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr,1.2fr]">
         <SectionCard title="事件浏览" description="来源: Gamma events">
           <EventList events={events} />
         </SectionCard>

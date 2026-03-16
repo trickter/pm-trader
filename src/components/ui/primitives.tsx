@@ -55,10 +55,10 @@ export function StatCard({
   hint: string;
 }) {
   return (
-    <div className="card rounded-[24px] p-5">
-      <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
-      <div className="mt-3 text-3xl font-semibold">{value}</div>
-      <p className="mt-3 text-sm text-[var(--muted)]">{hint}</p>
+    <div className="card flex min-h-[120px] flex-col rounded-[24px] p-5">
+      <p className="shrink-0 text-xs uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
+      <div className="mt-3 min-w-0 flex-1 truncate text-2xl font-semibold" title={typeof value === "string" || typeof value === "number" ? String(value) : undefined}>{value}</div>
+      <p className="mt-2 shrink-0 truncate text-xs text-[var(--muted)]" title={hint}>{hint}</p>
     </div>
   );
 }

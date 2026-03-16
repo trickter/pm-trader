@@ -1,6 +1,7 @@
 import { placeManualOrderAction } from "@/app/actions";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { MarketDetailBlock, MarketStats, OrderbookTable, OutcomeList, ShellPage } from "@/components/market-pages";
+import { CopyableId } from "@/components/ui/display";
 import { EmptyState, SectionCard, TextInput } from "@/components/ui/primitives";
 import { getMarketQuote } from "@/lib/polymarket/clob-public";
 import { getMarketById } from "@/lib/polymarket/gamma";
@@ -28,11 +29,11 @@ export default async function MarketDetailPage({
       <div className="space-y-6">
         <SectionCard title="市场概览" description="来源: Gamma + CLOB">
           <MarketStats market={market} quote={quote ?? undefined} />
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <MarketDetailBlock label="market id" value={market.id} />
-            <MarketDetailBlock label="condition id" value={market.conditionId ?? "--"} />
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MarketDetailBlock label="market id" value={market.id} copyable />
+            <MarketDetailBlock label="condition id" value={market.conditionId ?? "--"} copyable />
             <MarketDetailBlock label="slug" value={market.slug} />
-            <MarketDetailBlock label="开始 / 结束" value={`${formatDate(market.startDate)} / ${formatDate(market.endDate)}`} />
+            <MarketDetailBlock label="时间范围" value={`${formatDate(market.startDate)} — ${formatDate(market.endDate)}`} />
           </div>
         </SectionCard>
 
@@ -48,7 +49,9 @@ export default async function MarketDetailPage({
                 <input type="hidden" name="tokenId" value={primaryTokenId} />
                 <label className="text-sm">
                   <span className="mb-2 block text-[var(--muted)]">tokenId</span>
-                  <TextInput value={primaryTokenId} readOnly />
+                  <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5">
+                    <CopyableId value={primaryTokenId} startLen={10} endLen={8} />
+                  </div>
                 </label>
                 <label className="text-sm">
                   <span className="mb-2 block text-[var(--muted)]">side</span>

@@ -20,6 +20,44 @@ export function formatNumber(value: unknown, digits = 3) {
   });
 }
 
+/** Compact format: 1.4K, 105.2K, 1.4M, 2.3B */
+export function formatCompactNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+
+  const abs = Math.abs(numeric);
+  if (abs >= 1_000_000_000) {
+    return `${(numeric / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (abs >= 1_000_000) {
+    return `${(numeric / 1_000_000).toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${(numeric / 1_000).toFixed(1)}K`;
+  }
+  return formatNumber(value, 2);
+}
+
+/** Truncate a hash/id: 0xb486…40c8b */
+export function truncateHash(value: string | null | undefined, startLen = 6, endLen = 5) {
+  if (!value) return "--";
+  if (value.length <= startLen + endLen + 3) return value;
+  return `${value.slice(0, startLen)}…${value.slice(-endLen)}`;
+}
+
+/** Truncate text to maxLen with ellipsis */
+export function truncateText(value: string | null | undefined, maxLen = 40) {
+  if (!value) return "--";
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, maxLen)}…`;
+}
+
 export function formatPercent(value: unknown, digits = 2) {
   if (value === null || value === undefined || value === "") {
     return "--";

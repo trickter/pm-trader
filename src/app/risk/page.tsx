@@ -5,7 +5,7 @@ import { EmptyState, SectionCard, StatCard, StatusPill, TextInput } from "@/comp
 import { db } from "@/lib/db";
 import { getRiskSettings } from "@/lib/db/settings";
 import { humanConfirmationTodos } from "@/lib/mvp-facts";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +17,11 @@ export default async function RiskPage() {
 
   return (
     <ShellPage eyebrow="Risk Control" title="风控中心" description="全局风控规则只保存在服务端数据库中。kill switch 打开后，所有新订单都会被阻止。">
-      <div className="grid gap-4 md:grid-cols-4">
-        <StatCard label="global max exposure" value={settings.globalMaxExposure} hint="来源: local DB risk" />
-        <StatCard label="per-market max exposure" value={settings.perMarketMaxExposure} hint="来源: local DB risk" />
-        <StatCard label="max order size" value={settings.maxOrderSize} hint="来源: local DB risk" />
-        <StatCard label="kill switch" value={<StatusPill tone={settings.emergencyStop ? "danger" : "good"}>{settings.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="来源: local DB risk" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="global max exposure" value={formatNumber(settings.globalMaxExposure)} hint="local DB risk" />
+        <StatCard label="per-market max" value={formatNumber(settings.perMarketMaxExposure)} hint="local DB risk" />
+        <StatCard label="max order size" value={formatNumber(settings.maxOrderSize)} hint="local DB risk" />
+        <StatCard label="kill switch" value={<StatusPill tone={settings.emergencyStop ? "danger" : "good"}>{settings.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="local DB risk" />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr,1.15fr]">

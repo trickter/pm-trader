@@ -25,11 +25,11 @@ export default async function SettingsPage() {
 
   return (
     <ShellPage eyebrow="Server Runtime" title="系统设置" description="所有密钥都只存在服务端环境变量中，前端只展示是否已配置和适用范围，不回显敏感值。">
-      <div className="grid gap-4 md:grid-cols-4">
-        <StatCard label="api host" value={runtime.apiHost} hint="来源: local DB runtime" />
-        <StatCard label="chain id" value={runtime.chainId} hint="来源: local DB runtime" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="api host" value={runtime.apiHost} hint="local DB runtime" />
+        <StatCard label="chain id" value={runtime.chainId} hint="local DB runtime" />
         <StatCard label="wallet mode" value={runtime.walletMode} hint="MVP 只支持 EOA" />
-        <StatCard label="trading creds" value={<StatusPill tone={isTradingConfigured() ? "good" : "warn"}>{isTradingConfigured() ? "configured" : "missing"}</StatusPill>} hint="来源: server env only" />
+        <StatCard label="trading creds" value={<StatusPill tone={isTradingConfigured() ? "good" : "warn"}>{isTradingConfigured() ? "configured" : "missing"}</StatusPill>} hint="server env only" />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr,1.15fr]">

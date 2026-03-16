@@ -4,7 +4,7 @@ import { ShellPage } from "@/components/market-pages";
 import { EmptyState, SectionCard, StatCard, StatusPill, TextInput } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { humanConfirmationTodos } from "@/lib/mvp-facts";
-import { formatDate } from "@/lib/utils";
+import { formatDate, truncateHash } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export default async function StrategiesPage() {
         </form>
       }
     >
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="策略总数" value={strategies.length} hint="来源: local DB" />
         <StatCard label="启用中" value={strategies.filter((item) => item.enabled).length} hint="来源: local DB" />
         <StatCard label="Dry-run" value={strategies.filter((item) => item.dryRun).length} hint="来源: local DB" />
@@ -117,14 +117,14 @@ export default async function StrategiesPage() {
             ) : (
               strategies.map((strategy) => (
                 <div key={strategy.id} className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{strategy.name}</p>
-                      <p className="mt-1 text-[var(--muted)]">
-                        {strategy.type} · {strategy.side} · market {strategy.marketId}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{strategy.name}</p>
+                      <p className="mt-1 truncate text-xs text-[var(--muted)]">
+                        {strategy.type} · {strategy.side} · <span className="font-mono" title={strategy.marketId}>{truncateHash(strategy.marketId, 8, 6)}</span>
                       </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 gap-2">
                       <StatusPill tone={strategy.enabled ? "good" : "warn"}>{strategy.enabled ? "enabled" : "disabled"}</StatusPill>
                       <StatusPill tone={strategy.dryRun ? "warn" : "danger"}>{strategy.dryRun ? "dry-run" : "live"}</StatusPill>
                     </div>
