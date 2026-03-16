@@ -7,7 +7,7 @@ export function PositionsTable({ rows }: { rows: PositionRow[] }) {
     return (
       <TableEmpty
         title="No positions"
-        description="Configure POLYMARKET_TRADER_ADDRESS and ensure the address has open positions on Data API."
+        description="Positions 默认只显示未结束市场。请确认 POLYMARKET_TRADER_ADDRESS 已配置，且该地址在 Data API 上仍有活跃仓位。"
       />
     );
   }

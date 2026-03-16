@@ -1,11 +1,8 @@
 import { logger } from "@/lib/logger";
 import { wait } from "@/lib/utils";
 import { z } from "zod";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 const hostTimers = new Map<string, number>();
-const execFileAsync = promisify(execFile);
 
 type FetchJsonOptions<TSchema extends z.ZodTypeAny> = {
   schema: TSchema;
@@ -15,6 +12,11 @@ type FetchJsonOptions<TSchema extends z.ZodTypeAny> = {
 };
 
 async function fetchViaCurl(url: string, init?: RequestInit) {
+  const [{ execFile }, { promisify }] = await Promise.all([
+    import("node:child_process"),
+    import("node:util"),
+  ]);
+  const execFileAsync = promisify(execFile);
   const method = init?.method ?? "GET";
   const headers = Object.entries((init?.headers ?? {}) as Record<string, string>).flatMap(([key, value]) => [
     "-H",

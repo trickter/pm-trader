@@ -12,7 +12,9 @@ import {
 } from "@/components/orders/orders-workbench";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { filterActivePositions } from "@/lib/orders/positions";
 import { getPositions } from "@/lib/polymarket/data";
+import { getEventById } from "@/lib/polymarket/gamma";
 import { listOpenOrders, listTrades } from "@/lib/polymarket/clob-trading";
 import { isTradingConfigured } from "@/lib/polymarket/server-config";
 import { formatDate } from "@/lib/utils";
@@ -31,7 +33,56 @@ export default async function OrdersPage() {
       getPositions(env.POLYMARKET_TRADER_ADDRESS || undefined).catch(() => []),
     ]);
 
-  const positions: PositionRow[] = rawPositions.map((p, i) => ({
+  const conditionIds = [
+    ...new Set(
+      rawPositions
+        .map((position) => position.conditionId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  ];
+  const eventIds = [
+    ...new Set(
+      rawPositions
+        .map((position) => position.eventId)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  ];
+
+  const [cachedMarkets, cachedEvents, liveEvents] = await Promise.all([
+    conditionIds.length > 0
+      ? db.marketCache.findMany({ where: { conditionId: { in: conditionIds } } })
+      : Promise.resolve([]),
+    eventIds.length > 0 ? db.eventCache.findMany({ where: { id: { in: eventIds } } }) : Promise.resolve([]),
+    Promise.all(
+      eventIds.map(async (eventId) => {
+        try {
+          return await getEventById(eventId);
+        } catch {
+          return null;
+        }
+      }),
+    ),
+  ]);
+
+  const marketCacheByConditionId = new Map(cachedMarkets.map((market) => [market.conditionId, market]));
+  const eventCacheById = new Map(cachedEvents.map((event) => [event.id, event]));
+  const liveEventById = new Map(
+    liveEvents
+      .filter((event): event is NonNullable<(typeof liveEvents)[number]> => event !== null)
+      .map((event) => [event.id, event]),
+  );
+
+  const visiblePositionContexts = filterActivePositions(
+    rawPositions.map((position) => ({
+      position,
+      marketCache: position.conditionId ? marketCacheByConditionId.get(position.conditionId) : undefined,
+      eventCache: position.eventId ? eventCacheById.get(position.eventId) : undefined,
+      liveEvent: position.eventId ? liveEventById.get(position.eventId) : undefined,
+    })),
+  );
+
+  // Positions tab defaults to active / unended markets only.
+  const positions: PositionRow[] = visiblePositionContexts.map(({ position: p }, i) => ({
     id: String(p.asset ?? p.asset_id ?? i),
     title: String(p.title ?? p.conditionId ?? "Position"),
     conditionId: String(p.conditionId ?? "--"),
@@ -39,6 +90,8 @@ export default async function OrdersPage() {
     size: String(p.size ?? 0),
     currentValue: String(p.currentValue ?? p.size ?? 0),
     outcome: p.outcome ? String(p.outcome) : undefined,
+    eventId: p.eventId ? String(p.eventId) : undefined,
+    endDate: p.endDate ? String(p.endDate) : undefined,
   }));
 
   // --- Transform open orders ---
@@ -116,7 +169,7 @@ export default async function OrdersPage() {
     <ShellPage
       eyebrow="Orders / Trades / Positions"
       title="订单与持仓"
-      description="统一订单工作台。Positions / Open Orders / History 通过顶部 tab 切换，每条记录标注数据来源。"
+      description="统一订单工作台。Positions 默认只展示仍有交易/观察意义的活跃仓位；Open Orders 和 History 保持原始逻辑。"
       actions={
         <form action={syncTradingViewsAction}>
           <SubmitButton pendingLabel="同步中...">同步远端视图</SubmitButton>
@@ -125,7 +178,7 @@ export default async function OrdersPage() {
     >
       {/* Summary stats */}
       <div className="mb-5 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard label="positions" value={positions.length} hint="Data API" />
+        <StatCard label="positions" value={positions.length} hint="Data API active-only" />
         <StatCard label="open orders" value={openOrders.length} hint="CLOB + Local" />
         <StatCard
           label="history"

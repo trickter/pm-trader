@@ -25,6 +25,8 @@ export type PositionRow = {
   size: string;
   currentValue: string;
   outcome?: string;
+  eventId?: string;
+  endDate?: string;
 };
 
 export type OpenOrderRow = {

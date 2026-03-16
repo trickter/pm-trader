@@ -88,7 +88,30 @@ export const dataTradeSchema = z
 
 export const dataTradeResponseSchema = z.array(dataTradeSchema);
 
-export const dataPositionSchema = z.record(z.string(), z.unknown());
+export const dataPositionSchema = z
+  .object({
+    proxyWallet: z.string().optional(),
+    asset: z.string().optional(),
+    asset_id: z.string().optional(),
+    conditionId: z.string().optional(),
+    size: z.union([z.number(), z.string()]).optional(),
+    avgPrice: z.union([z.number(), z.string()]).optional(),
+    currentValue: z.union([z.number(), z.string()]).optional(),
+    title: z.string().optional(),
+    slug: z.string().optional(),
+    icon: z.string().optional(),
+    eventId: z.union([z.string(), z.number()]).transform(String).optional(),
+    eventSlug: z.string().optional(),
+    outcome: z.string().optional(),
+    outcomeIndex: z.union([z.string(), z.number()]).optional(),
+    oppositeOutcome: z.string().optional(),
+    oppositeAsset: z.string().optional(),
+    endDate: z.string().optional(),
+    redeemable: z.boolean().optional(),
+    mergeable: z.boolean().optional(),
+    negativeRisk: z.boolean().optional(),
+  })
+  .passthrough();
 export const dataPositionResponseSchema = z.array(dataPositionSchema);
 
 export const clobBookLevelSchema = z.object({
@@ -120,4 +143,5 @@ export const clobSpreadSchema = z.object({
 export type GammaMarket = z.infer<typeof gammaMarketSchema>;
 export type GammaEvent = z.infer<typeof gammaEventSchema>;
 export type DataTrade = z.infer<typeof dataTradeSchema>;
+export type DataPosition = z.infer<typeof dataPositionSchema>;
 export type ClobOrderBook = z.infer<typeof clobOrderBookSchema>;
