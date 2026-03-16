@@ -1,65 +1,121 @@
-import Image from "next/image";
+import { runEngineNowAction } from "@/app/actions";
+import { ShellPage, MarketStats } from "@/components/market-pages";
+import { SectionCard, StatCard, StatusPill, EmptyState } from "@/components/ui/primitives";
+import { SubmitButton } from "@/components/forms/submit-button";
+import { getDashboardState, getRiskSettings } from "@/lib/db/settings";
+import { discoverMarkets } from "@/lib/polymarket/gamma";
+import { getMarketQuote } from "@/lib/polymarket/clob-public";
+import { formatDate, formatNumber } from "@/lib/utils";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  const [dashboard, risk, markets] = await Promise.all([
+    getDashboardState(),
+    getRiskSettings(),
+    discoverMarkets({ active: true, closed: false, limit: 6 }),
+  ]);
+
+  const selectedMarket = markets[0];
+  const selectedToken = selectedMarket?.clobTokenIds ? JSON.parse(selectedMarket.clobTokenIds)[0] : null;
+  const quote = selectedToken ? await getMarketQuote(selectedToken).catch(() => null) : null;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <ShellPage
+      eyebrow="Step 5 / MVP"
+      title="Dashboard"
+      description="系统概览页把实时行情和策略状态拆开展示。策略引擎只在服务端运行，页面只做查询与触发。"
+      actions={
+        <form action={runEngineNowAction}>
+          <SubmitButton pendingLabel="运行中...">立即跑一次策略引擎</SubmitButton>
+        </form>
+      }
+    >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="策略总数" value={dashboard.strategiesCount} hint="来源: local DB" />
+        <StatCard label="启用策略" value={dashboard.enabledStrategiesCount} hint="来源: local DB" />
+        <StatCard label="紧急停止" value={<StatusPill tone={risk.emergencyStop ? "danger" : "good"}>{risk.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="来源: local DB risk settings" />
+        <StatCard label="最近成交数" value={dashboard.latestFills.length} hint="来源: local DB fills" />
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+        <SectionCard title="实时行情" description="来源: Gamma + CLOB。这里只展示选中市场的最新盘口，不混入策略状态。">
+          {selectedMarket && quote ? (
+            <div className="space-y-5">
+              <div>
+                <p className="text-sm text-[var(--muted)]">{selectedMarket.question}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">marketId: {selectedMarket.id}</p>
+              </div>
+              <MarketStats market={selectedMarket} quote={quote} />
+            </div>
+          ) : (
+            <EmptyState title="暂无实时行情" description="没有可用 market / token，或当前行情请求失败。" />
+          )}
+        </SectionCard>
+
+        <SectionCard title="策略状态" description="来源: local DB。这里只展示策略与执行结果，不直接混入盘口数据。">
+          <div className="space-y-3">
+            {dashboard.latestSignals.length === 0 ? (
+              <EmptyState title="暂无信号" description="先创建并启用策略，再运行一次服务端引擎。" />
+            ) : (
+              dashboard.latestSignals.map((signal) => (
+                <div key={signal.id} className="rounded-2xl border border-[var(--line)] px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{signal.signalType}</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">{signal.reason}</p>
+                    </div>
+                    <StatusPill tone={signal.executed ? "good" : "warn"}>{signal.executed ? "executed" : "logged"}</StatusPill>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--muted)]">{formatDate(signal.createdAt)}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <SectionCard title="最近订单" description="来源: local DB">
+          <div className="space-y-3">
+            {dashboard.latestOrders.length === 0 ? (
+              <EmptyState title="暂无订单" description="dry-run 信号不会走真实下单。启用 live 或手工下单后这里会出现记录。" />
+            ) : (
+              dashboard.latestOrders.map((order) => (
+                <div key={order.id} className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{order.marketId}</span>
+                    <StatusPill tone={order.status === "REJECTED" ? "danger" : "good"}>{order.status}</StatusPill>
+                  </div>
+                  <p className="mt-2 text-[var(--muted)]">
+                    {order.side} {formatNumber(order.size)} @ {formatNumber(order.price)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="最近成交" description="来源: local DB fills">
+          <div className="space-y-3">
+            {dashboard.latestFills.length === 0 ? (
+              <EmptyState title="暂无成交" description="只有确认落库的 fill 才会出现在这里。" />
+            ) : (
+              dashboard.latestFills.map((fill) => (
+                <div key={fill.id} className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{fill.marketId}</span>
+                    <StatusPill tone="good">{fill.source}</StatusPill>
+                  </div>
+                  <p className="mt-2 text-[var(--muted)]">
+                    {fill.side} {formatNumber(fill.size)} @ {formatNumber(fill.price)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </SectionCard>
+      </div>
+    </ShellPage>
   );
 }

@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StrategyType {
+  THRESHOLD_BREAKOUT
+  ORDERBOOK_IMBALANCE
+}
+
+enum StrategySide {
+  BUY
+  SELL
+}
+
+enum SignalType {
+  PRICE_THRESHOLD
+  SPREAD_THRESHOLD
+  DEPTH_IMBALANCE
+}
+
+enum OrderStatus {
+  PENDING
+  SUBMITTED
+  REJECTED
+  CANCELLED
+  FILLED
+  PARTIALLY_FILLED
+  UNKNOWN
+}
+
+enum RiskRuleType {
+  GLOBAL
+  PER_MARKET
+}
+
+model MarketCache {
+  id           String   @id
+  slug         String?
+  question     String
+  conditionId  String?
+  active       Boolean?
+  closed       Boolean?
+  endDate      DateTime?
+  liquidity    Decimal? @db.Decimal(20, 8)
+  volume       Decimal? @db.Decimal(20, 8)
+  openInterest Decimal? @db.Decimal(20, 8)
+  raw          Json
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model EventCache {
+  id           String   @id
+  slug         String?
+  title        String
+  active       Boolean?
+  closed       Boolean?
+  endDate      DateTime?
+  liquidity    Decimal? @db.Decimal(20, 8)
+  volume       Decimal? @db.Decimal(20, 8)
+  openInterest Decimal? @db.Decimal(20, 8)
+  raw          Json
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Strategy {
+  id                 String        @id @default(cuid())
+  name               String
+  type               StrategyType
+  marketId           String
+  tokenId            String
+  side               StrategySide
+  triggerParams      Json
+  maxOrderSize       Decimal       @db.Decimal(20, 8)
+  maxDailyTradeCount Int
+  cooldownSeconds    Int
+  dryRun             Boolean       @default(true)
+  enabled            Boolean       @default(false)
+  lastSignalHash     String?
+  lastTriggeredAt    DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  runs               StrategyRun[]
+  signals            Signal[]
+  orders             Order[]
+}
+
+model StrategyRun {
+  id         String   @id @default(cuid())
+  strategyId String
+  strategy   Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  status     String
+  summary    String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+}
+
+model Signal {
+  id                  String       @id @default(cuid())
+  strategyId          String
+  strategy            Strategy     @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  marketId            String
+  tokenId             String
+  signalType          SignalType
+  side                StrategySide
+  reason              String
+  observedPrice       Decimal?     @db.Decimal(20, 8)
+  observedSpread      Decimal?     @db.Decimal(20, 8)
+  bookSnapshotSummary Json?
+  signalHash          String
+  executed            Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+}
+
+model Order {
+  id                String       @id @default(cuid())
+  strategyId        String?
+  strategy          Strategy?    @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  signalId          String?
+  marketId          String
+  tokenId           String
+  clientOrderId     String?
+  polymarketOrderId String?
+  side              StrategySide
+  price             Decimal      @db.Decimal(20, 8)
+  size              Decimal      @db.Decimal(20, 8)
+  status            OrderStatus  @default(PENDING)
+  dryRun            Boolean      @default(true)
+  source            String
+  rawRequest        Json?
+  rawResponse       Json?
+  errorMessage      String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  fills             Fill[]
+}
+
+model Fill {
+  id                String       @id @default(cuid())
+  orderId           String?
+  order             Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  polymarketTradeId String?
+  marketId          String
+  tokenId           String
+  side              StrategySide
+  price             Decimal      @db.Decimal(20, 8)
+  size              Decimal      @db.Decimal(20, 8)
+  source            String
+  raw               Json?
+  createdAt         DateTime     @default(now())
+}
+
+model PositionSnapshot {
+  id         String   @id @default(cuid())
+  marketId   String
+  tokenId    String
+  source     String
+  raw        Json
+  capturedAt DateTime @default(now())
+}
+
+model RiskRule {
+  id        String       @id @default(cuid())
+  type      RiskRuleType
+  scopeKey  String?
+  params    Json
+  enabled   Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}

@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PM Trader MVP
 
-## Getting Started
+Polymarket strategy trading system MVP built with Next.js App Router + TypeScript + Prisma + PostgreSQL.
 
-First, run the development server:
+## Scope
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Market discovery: Gamma API
+- Public trade/position reads: Data API
+- Orderbook / quote / order execution: CLOB API
+- Trading auth: official `@polymarket/clob-client`
+- Live trading account scope: `EOA` only in this MVP
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Dashboard with realtime market snapshot vs strategy state separation
+- Market discovery and search
+- Market detail with orderbook and manual limit order form
+- Two server-side strategies:
+  - Threshold breakout
+  - Spread / top-of-book imbalance
+- Dry-run signal logging
+- Live order submission when server credentials are configured
+- Orders / trades / positions views with source labels
+- Global risk controls, kill switch, cancel-all button, audit logs
+- System settings page with server-only secret boundary display
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local Run
 
-## Learn More
+1. Copy `.env.example` to `.env`.
+2. Start PostgreSQL and update `DATABASE_URL`.
+3. Run `npm install`.
+4. Run `npm run prisma:generate`.
+5. Run `npm run prisma:push`.
+6. Run `npm run dev`.
 
-To learn more about Next.js, take a look at the following resources:
+## Optional Live Trading Env
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Set these server-only variables before using live CLOB order submission:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `POLYMARKET_PRIVATE_KEY`
+- `POLYMARKET_TRADER_ADDRESS`
+- `POLYMARKET_CHAIN_ID=137`
+- `POLYMARKET_SIGNATURE_TYPE=0`
 
-## Deploy on Vercel
+## Verified Commands
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `npm run prisma:generate`
+- `npm run lint`
+- `npm run build`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Known Limits
+
+- Realtime quotes currently use server-side polling behind `/api/quote`; official WSS market channel is left as a TODO until payload handling is fully confirmed.
+- Tag filter query parameters are not wired yet because they still need one more documentation check.
+- Allowance / approval setup for first live trade is not automated in this MVP.
+- `POLY_PROXY` and `POLY_GNOSIS_SAFE` account modes are intentionally excluded.
