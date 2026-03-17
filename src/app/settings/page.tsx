@@ -26,8 +26,8 @@ export default async function SettingsPage() {
   return (
     <ShellPage eyebrow="Server Runtime" title="系统设置" description="所有密钥都只存在服务端环境变量中，前端只展示是否已配置和适用范围，不回显敏感值。">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="api host" value={runtime.apiHost} hint="local DB runtime" />
-        <StatCard label="chain id" value={runtime.chainId} hint="local DB runtime" />
+        <StatCard label="api host" value={runtime.apiHost} hint="from env var (read-only)" />
+        <StatCard label="chain id" value={runtime.chainId} hint="from env var (read-only)" />
         <StatCard label="wallet mode" value={runtime.walletMode} hint="MVP 只支持 EOA" />
         <StatCard label="trading creds" value={<StatusPill tone={isTradingConfigured() ? "good" : "warn"}>{isTradingConfigured() ? "configured" : "missing"}</StatusPill>} hint="server env only" />
       </div>
@@ -37,11 +37,13 @@ export default async function SettingsPage() {
           <form action={updateRuntimeSettingsAction} className="grid gap-4 md:grid-cols-2">
             <label className="text-sm">
               <span className="mb-2 block text-[var(--muted)]">api host</span>
-              <TextInput name="apiHost" defaultValue={runtime.apiHost} />
+              <TextInput name="apiHost" defaultValue={runtime.apiHost} disabled />
+              <span className="mt-1 block text-xs text-[var(--muted)]">Controlled by environment variable. Read-only.</span>
             </label>
             <label className="text-sm">
               <span className="mb-2 block text-[var(--muted)]">chain id</span>
-              <TextInput name="chainId" type="number" defaultValue={runtime.chainId} />
+              <TextInput name="chainId" type="number" defaultValue={runtime.chainId} disabled />
+              <span className="mt-1 block text-xs text-[var(--muted)]">Controlled by environment variable. Read-only.</span>
             </label>
             <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm md:col-span-2">
               <input type="checkbox" name="defaultDryRun" defaultChecked={runtime.defaultDryRun} />

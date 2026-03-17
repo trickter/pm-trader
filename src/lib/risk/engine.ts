@@ -6,7 +6,7 @@ import { getPositions } from "@/lib/polymarket/data";
 
 export async function assertRiskBeforeOrder(input: {
   strategyId: string;
-  marketId: string;
+  conditionId: string;
   size: number;
   signalHash: string;
   traderAddress?: string;
@@ -22,11 +22,13 @@ export async function assertRiskBeforeOrder(input: {
         },
       },
     }),
+    // Check for ANY existing signal with this hash, not just executed ones.
+    // Checking only `executed: true` leaves a race window where two concurrent
+    // runs both pass the check before either marks the signal as executed.
     db.signal.findFirst({
       where: {
         strategyId: input.strategyId,
         signalHash: input.signalHash,
-        executed: true,
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -46,7 +48,7 @@ export async function assertRiskBeforeOrder(input: {
   }
 
   if (duplicateSignal) {
-    throw new Error("Duplicate signal already executed");
+    throw new Error("Duplicate signal already exists");
   }
 
   if (strategy.lastTriggeredAt) {
@@ -66,7 +68,7 @@ export async function assertRiskBeforeOrder(input: {
   }
 
   const marketExposure = positions
-    .filter((position) => String(position.conditionId ?? position.market) === input.marketId)
+    .filter((position) => String(position.conditionId ?? "") === input.conditionId)
     .reduce((sum, position) => sum + Number(position.currentValue ?? position.size ?? 0), 0);
 
   if (marketExposure + input.size > settings.perMarketMaxExposure) {
@@ -75,7 +77,7 @@ export async function assertRiskBeforeOrder(input: {
 }
 
 export async function assertManualRisk(input: {
-  marketId: string;
+  conditionId: string;
   size: number;
   traderAddress?: string;
 }) {
@@ -102,7 +104,7 @@ export async function assertManualRisk(input: {
   }
 
   const marketExposure = positions
-    .filter((position) => String(position.conditionId ?? position.market) === input.marketId)
+    .filter((position) => String(position.conditionId ?? "") === input.conditionId)
     .reduce((sum, position) => sum + Number(position.currentValue ?? position.size ?? 0), 0);
 
   if (marketExposure + input.size > settings.perMarketMaxExposure) {
@@ -110,13 +112,18 @@ export async function assertManualRisk(input: {
   }
 }
 
-export async function audit(action: string, entityType: string, entityId?: string, payload?: Prisma.InputJsonValue) {
+export async function audit(action: string, entityType: string, entityId?: string, payload?: Prisma.InputJsonValue, actor?: string) {
+  const enrichedPayload: Record<string, unknown> = {
+    ...(typeof payload === "object" && payload !== null && !Array.isArray(payload) ? payload : payload !== undefined ? { _value: payload } : {}),
+    ...(actor ? { actor } : {}),
+  };
+
   await db.auditLog.create({
     data: {
       action,
       entityType,
       entityId,
-      payload,
+      payload: Object.keys(enrichedPayload).length > 0 ? (enrichedPayload as Prisma.InputJsonValue) : undefined,
     },
   });
 }

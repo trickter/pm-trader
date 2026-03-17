@@ -40,6 +40,10 @@ export async function getPositions(user: string | undefined, limit = 50) {
     { schema: dataPositionResponseSchema },
   );
 
+  return positions;
+}
+
+export async function savePositionSnapshots(positions: Awaited<ReturnType<typeof getPositions>>) {
   await Promise.all(
     positions.slice(0, 10).map((position) =>
       db.positionSnapshot.create({
@@ -52,6 +56,4 @@ export async function getPositions(user: string | undefined, limit = 50) {
       }),
     ),
   );
-
-  return positions;
 }

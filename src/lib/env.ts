@@ -18,6 +18,7 @@ const serverEnvSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  ADMIN_API_TOKEN: z.string().min(1),
   SYSTEM_DEFAULT_DRY_RUN: z
     .enum(["true", "false"])
     .default("true")

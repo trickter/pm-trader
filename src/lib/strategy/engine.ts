@@ -12,6 +12,7 @@ import { hashSignal } from "@/lib/utils";
 import { assertRiskBeforeOrder, audit } from "@/lib/risk/engine";
 
 let loopStarted = false;
+let engineRunning = false;
 
 function jsonToInputValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -68,6 +69,25 @@ async function executeStrategy(strategyId: string) {
     signalCandidate.observedSpread,
   ]);
 
+  // Idempotency check: skip if a signal with this hash already exists for this
+  // strategy, regardless of whether it has been marked executed yet. This
+  // prevents duplicate orders when two engine runs overlap.
+  const existingSignal = await db.signal.findFirst({
+    where: {
+      strategyId: strategy.id,
+      signalHash,
+    },
+  });
+
+  if (existingSignal) {
+    logger.info("skipping duplicate signal", {
+      strategyId: strategy.id,
+      signalHash,
+      existingSignalId: existingSignal.id,
+    });
+    return null;
+  }
+
   const signal = await db.signal.create({
     data: {
       strategyId: strategy.id,
@@ -90,14 +110,14 @@ async function executeStrategy(strategyId: string) {
       strategyId: strategy.id,
       dryRun: true,
       signalType: signal.signalType,
-    });
+    }, "engine");
     return signal;
   }
 
   try {
     await assertRiskBeforeOrder({
       strategyId: strategy.id,
-      marketId: strategy.marketId,
+      conditionId: market.conditionId ?? strategy.marketId,
       size: Number(strategy.maxOrderSize),
       signalHash,
       traderAddress: env.POLYMARKET_TRADER_ADDRESS || undefined,
@@ -150,7 +170,7 @@ async function executeStrategy(strategyId: string) {
     await audit("order_submitted", "Order", response.orderID ?? undefined, {
       strategyId: strategy.id,
       signalId: signal.id,
-    });
+    }, "engine");
 
     return signal;
   } catch (error) {
@@ -172,38 +192,51 @@ async function executeStrategy(strategyId: string) {
 
     await audit("order_rejected", "Signal", signal.id, {
       error: error instanceof Error ? error.message : String(error),
-    });
+    }, "engine");
     return signal;
   }
 }
 
 export async function runStrategyEngineOnce() {
-  const strategies = await db.strategy.findMany({
-    where: { enabled: true },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  const results = [];
-  for (const strategy of strategies) {
-    try {
-      const result = await executeStrategy(strategy.id);
-      results.push({ strategyId: strategy.id, result });
-    } catch (error) {
-      logger.error("engine execution failed", {
-        strategyId: strategy.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await db.strategyRun.create({
-        data: {
-          strategyId: strategy.id,
-          status: "error",
-          summary: error instanceof Error ? error.message : "Unknown execution error",
-        },
-      });
-    }
+  // In-process mutex: if a previous run is still executing, skip this
+  // invocation entirely. This prevents setInterval overlap within a single
+  // process from causing duplicate order placement.
+  if (engineRunning) {
+    logger.info("skipping engine run – previous run still in progress");
+    return [];
   }
 
-  return results;
+  engineRunning = true;
+  try {
+    const strategies = await db.strategy.findMany({
+      where: { enabled: true },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const results = [];
+    for (const strategy of strategies) {
+      try {
+        const result = await executeStrategy(strategy.id);
+        results.push({ strategyId: strategy.id, result });
+      } catch (error) {
+        logger.error("engine execution failed", {
+          strategyId: strategy.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await db.strategyRun.create({
+          data: {
+            strategyId: strategy.id,
+            status: "error",
+            summary: error instanceof Error ? error.message : "Unknown execution error",
+          },
+        });
+      }
+    }
+
+    return results;
+  } finally {
+    engineRunning = false;
+  }
 }
 
 export function startStrategyLoop() {

@@ -132,6 +132,11 @@ export async function getMarketById(marketId: string) {
 }
 
 export async function getEventById(eventId: string) {
+  const cached = await db.eventCache.findUnique({ where: { id: eventId } });
+  if (cached) {
+    return gammaEventSchema.parse(cached.raw);
+  }
+
   const event = await fetchJson(buildUrl(`/events/${eventId}`), {
     schema: gammaEventSchema,
   });
