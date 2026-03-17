@@ -8,6 +8,7 @@ import { getMarketQuote } from "@/lib/polymarket/clob-public";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
 import { evaluateOrderbookImbalance } from "@/lib/strategy/rules/spread-imbalance";
 import { evaluateThresholdBreakout } from "@/lib/strategy/rules/threshold-breakout";
+import { executeRangeQuotingStrategy } from "@/lib/strategy/range-engine";
 import { hashSignal } from "@/lib/utils";
 import { assertRiskBeforeOrder, audit } from "@/lib/risk/engine";
 
@@ -22,6 +23,11 @@ async function executeStrategy(strategyId: string) {
   const strategy = await db.strategy.findUnique({ where: { id: strategyId } });
   if (!strategy || !strategy.enabled) {
     return null;
+  }
+
+  // Dispatch TWO_SIDED_RANGE_QUOTING to its dedicated engine
+  if (strategy.type === StrategyType.TWO_SIDED_RANGE_QUOTING) {
+    return executeRangeQuotingStrategy(strategyId);
   }
 
   const [market, quote] = await Promise.all([getMarketById(strategy.marketId), getMarketQuote(strategy.tokenId)]);

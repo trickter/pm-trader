@@ -10,6 +10,7 @@ datasource db {
 enum StrategyType {
   THRESHOLD_BREAKOUT
   ORDERBOOK_IMBALANCE
+  TWO_SIDED_RANGE_QUOTING
 }
 
 enum StrategySide {
@@ -21,6 +22,8 @@ enum SignalType {
   PRICE_THRESHOLD
   SPREAD_THRESHOLD
   DEPTH_IMBALANCE
+  RANGE_ENTRY
+  RANGE_EXIT
 }
 
 enum OrderStatus {
@@ -191,4 +194,24 @@ model SystemSetting {
   value     Json
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+}
+
+model MarketSuitability {
+  id              String   @id @default(cuid())
+  marketId        String
+  strategyId      String?
+  score           Int
+  priceRangeScore Int      @default(0)
+  liquidityScore  Int      @default(0)
+  volumeScore     Int      @default(0)
+  bookDepthScore  Int      @default(0)
+  spreadScore     Int      @default(0)
+  timeToExpiry    Int      @default(0)
+  qualified       Boolean  @default(false)
+  reason          String?
+  snapshot        Json?
+  capturedAt      DateTime @default(now())
+
+  @@index([marketId])
+  @@index([strategyId])
 }

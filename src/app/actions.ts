@@ -13,11 +13,16 @@ import { listOpenOrders, listTrades, placeLimitOrder, cancelAllOrders } from "@/
 import { getPositions, savePositionSnapshots } from "@/lib/polymarket/data";
 import { assertManualRisk, audit } from "@/lib/risk/engine";
 import { runStrategyEngineOnce } from "@/lib/strategy/engine";
-import { orderbookImbalanceParamsSchema, thresholdBreakoutParamsSchema } from "@/lib/strategy/types";
+import {
+  orderbookImbalanceParamsSchema,
+  thresholdBreakoutParamsSchema,
+  twoSidedRangeQuotingParamsSchema,
+} from "@/lib/strategy/types";
+import { runRangeQuotingMarketScan } from "@/lib/strategy/range-engine";
 
 const strategySchema = z.object({
   name: z.string().min(2),
-  type: z.enum(["THRESHOLD_BREAKOUT", "ORDERBOOK_IMBALANCE"]),
+  type: z.enum(["THRESHOLD_BREAKOUT", "ORDERBOOK_IMBALANCE", "TWO_SIDED_RANGE_QUOTING"]),
   marketId: z.string().min(1),
   tokenId: z.string().min(1),
   side: z.enum(["BUY", "SELL"]),
@@ -26,11 +31,34 @@ const strategySchema = z.object({
   cooldownSeconds: z.coerce.number().int().nonnegative(),
   dryRun: z.coerce.boolean(),
   enabled: z.coerce.boolean(),
+  // THRESHOLD_BREAKOUT params
   threshold: z.coerce.number().optional(),
   comparator: z.enum(["gte", "lte"]).optional(),
+  // ORDERBOOK_IMBALANCE params
   maxSpread: z.coerce.number().optional(),
   minTopDepth: z.coerce.number().optional(),
   imbalanceRatio: z.coerce.number().optional(),
+  // TWO_SIDED_RANGE_QUOTING params
+  entryLow: z.coerce.number().optional(),
+  entryHigh: z.coerce.number().optional(),
+  exitLow: z.coerce.number().optional(),
+  exitHigh: z.coerce.number().optional(),
+  orderSize: z.coerce.number().optional(),
+  maxInventoryPerSide: z.coerce.number().optional(),
+  maxInventoryPerMarket: z.coerce.number().optional(),
+  maxOpenOrdersPerSide: z.coerce.number().optional(),
+  maxMarketsTracked: z.coerce.number().optional(),
+  minLiquidity: z.coerce.number().optional(),
+  minVolume24h: z.coerce.number().optional(),
+  minBookDepth: z.coerce.number().optional(),
+  rangeMaxSpread: z.coerce.number().optional(),
+  minTimeToExpiryMinutes: z.coerce.number().optional(),
+  quoteRefreshSeconds: z.coerce.number().optional(),
+  staleQuoteSeconds: z.coerce.number().optional(),
+  scanIntervalSeconds: z.coerce.number().optional(),
+  trendFilterEnabled: z.coerce.boolean().optional(),
+  trendFilterThreshold: z.coerce.number().optional(),
+  allowBothSidesInventory: z.coerce.boolean().optional(),
 });
 
 export async function createStrategyAction(formData: FormData) {
@@ -54,19 +82,64 @@ export async function createStrategyAction(formData: FormData) {
     maxSpread: formData.get("maxSpread"),
     minTopDepth: formData.get("minTopDepth"),
     imbalanceRatio: formData.get("imbalanceRatio"),
+    entryLow: formData.get("entryLow"),
+    entryHigh: formData.get("entryHigh"),
+    exitLow: formData.get("exitLow"),
+    exitHigh: formData.get("exitHigh"),
+    orderSize: formData.get("orderSize"),
+    maxInventoryPerSide: formData.get("maxInventoryPerSide"),
+    maxInventoryPerMarket: formData.get("maxInventoryPerMarket"),
+    maxOpenOrdersPerSide: formData.get("maxOpenOrdersPerSide"),
+    maxMarketsTracked: formData.get("maxMarketsTracked"),
+    minLiquidity: formData.get("minLiquidity"),
+    minVolume24h: formData.get("minVolume24h"),
+    minBookDepth: formData.get("minBookDepth"),
+    rangeMaxSpread: formData.get("rangeMaxSpread"),
+    minTimeToExpiryMinutes: formData.get("minTimeToExpiryMinutes"),
+    quoteRefreshSeconds: formData.get("quoteRefreshSeconds"),
+    staleQuoteSeconds: formData.get("staleQuoteSeconds"),
+    scanIntervalSeconds: formData.get("scanIntervalSeconds"),
+    trendFilterEnabled: formData.get("trendFilterEnabled") === "on",
+    trendFilterThreshold: formData.get("trendFilterThreshold"),
+    allowBothSidesInventory: formData.get("allowBothSidesInventory") === "on",
   });
 
-  const triggerParams =
-    values.type === "THRESHOLD_BREAKOUT"
-      ? thresholdBreakoutParamsSchema.parse({
-          threshold: values.threshold,
-          comparator: values.comparator,
-        })
-      : orderbookImbalanceParamsSchema.parse({
-          maxSpread: values.maxSpread,
-          minTopDepth: values.minTopDepth,
-          imbalanceRatio: values.imbalanceRatio,
-        });
+  let triggerParams;
+  if (values.type === "THRESHOLD_BREAKOUT") {
+    triggerParams = thresholdBreakoutParamsSchema.parse({
+      threshold: values.threshold,
+      comparator: values.comparator,
+    });
+  } else if (values.type === "ORDERBOOK_IMBALANCE") {
+    triggerParams = orderbookImbalanceParamsSchema.parse({
+      maxSpread: values.maxSpread,
+      minTopDepth: values.minTopDepth,
+      imbalanceRatio: values.imbalanceRatio,
+    });
+  } else {
+    triggerParams = twoSidedRangeQuotingParamsSchema.parse({
+      entryLow: values.entryLow ?? 0.36,
+      entryHigh: values.entryHigh ?? 0.42,
+      exitLow: values.exitLow ?? 0.58,
+      exitHigh: values.exitHigh ?? 0.64,
+      orderSize: values.orderSize ?? 5,
+      maxInventoryPerSide: values.maxInventoryPerSide ?? 25,
+      maxInventoryPerMarket: values.maxInventoryPerMarket ?? 40,
+      maxOpenOrdersPerSide: values.maxOpenOrdersPerSide ?? 2,
+      maxMarketsTracked: values.maxMarketsTracked ?? 10,
+      minLiquidity: values.minLiquidity ?? 10000,
+      minVolume24h: values.minVolume24h ?? 1000,
+      minBookDepth: values.minBookDepth ?? 200,
+      maxSpread: values.rangeMaxSpread ?? 0.08,
+      minTimeToExpiryMinutes: values.minTimeToExpiryMinutes ?? 4320,
+      quoteRefreshSeconds: values.quoteRefreshSeconds ?? 60,
+      staleQuoteSeconds: values.staleQuoteSeconds ?? 300,
+      scanIntervalSeconds: values.scanIntervalSeconds ?? 300,
+      trendFilterEnabled: values.trendFilterEnabled ?? true,
+      trendFilterThreshold: values.trendFilterThreshold ?? 0.10,
+      allowBothSidesInventory: values.allowBothSidesInventory ?? true,
+    });
+  }
 
   await db.strategy.create({
     data: {
@@ -225,6 +298,20 @@ export async function cancelAllOrdersAction() {
   await audit("cancel_all_orders", "Order", undefined, undefined, "operator");
   revalidatePath("/orders");
   revalidatePath("/risk");
+}
+
+export async function runMarketScanAction(formData: FormData) {
+  if (!(await verifyAdminToken())) {
+    throw new Error("Unauthorized");
+  }
+
+  const strategyId = String(formData.get("strategyId"));
+  const result = await runRangeQuotingMarketScan(strategyId);
+  await audit("market_scan_completed", "Strategy", strategyId, {
+    totalScanned: result?.total ?? 0,
+    qualified: result?.qualified ?? 0,
+  }, "operator");
+  revalidatePath("/strategies");
 }
 
 export async function syncTradingViewsAction() {
