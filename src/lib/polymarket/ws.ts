@@ -315,6 +315,9 @@ class PolymarketStreamSupervisor {
   }
 
   private async runReconcile(reason: ReconcileReason) {
+    const previousFailures = Number(this.health.details.reconcileFailureCount ?? 0);
+    const reconcileAttempt = Number(this.health.details.reconcileAttempt ?? 0) + 1;
+
     await this.patchHealth({
       reconciling: true,
       tradingBlocked: true,
@@ -323,6 +326,7 @@ class PolymarketStreamSupervisor {
       details: {
         ...this.health.details,
         reconcileReason: reason,
+        reconcileAttempt,
       },
     });
 
@@ -487,9 +491,12 @@ class PolymarketStreamSupervisor {
         details: {
           ...this.health.details,
           lastReconcileReason: reason,
+          lastReconcileStatus: "success",
+          lastReconcileError: null,
           openOrders: openOrders.length,
           trades: seenTradeIds.size,
           positions: positions.length,
+          reconcileFailureCount: 0,
         },
       });
 
@@ -507,7 +514,9 @@ class PolymarketStreamSupervisor {
         lastHeartbeatAt: new Date(),
         details: {
           ...this.health.details,
-          reconcileError: error instanceof Error ? error.message : String(error),
+          lastReconcileStatus: "failed",
+          lastReconcileError: error instanceof Error ? error.message : String(error),
+          reconcileFailureCount: previousFailures + 1,
         },
       });
     }

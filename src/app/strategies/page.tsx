@@ -1,14 +1,13 @@
 import { createStrategyAction, runEngineNowAction, runMarketScanAction } from "@/app/actions";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";
-import { EmptyState, SectionCard, StatCard, StatusPill, TextInput } from "@/components/ui/primitives";
+import { StrategyForm } from "@/components/strategies/strategy-form";
+import { EmptyState, SectionCard, StatCard, StatusPill } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { humanConfirmationTodos } from "@/lib/mvp-facts";
 import { formatDate, truncateHash } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-
-const selectClass = "w-full rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5";
 
 export default async function StrategiesPage() {
   const [strategies, signals, runs, recentSuitability] = await Promise.all([
@@ -40,179 +39,7 @@ export default async function StrategiesPage() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr,1.15fr]">
         <SectionCard title="新建策略" description="创建后会落库。dry-run 只记录 signal，不会提交真实订单。">
-          <form action={createStrategyAction} className="grid gap-4 md:grid-cols-2">
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">strategy name</span>
-              <TextInput name="name" placeholder="Range quoting on mid-prob market" required />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">type</span>
-              <select name="type" className={selectClass}>
-                <option value="TWO_SIDED_RANGE_QUOTING">TWO_SIDED_RANGE_QUOTING</option>
-                <option value="THRESHOLD_BREAKOUT">THRESHOLD_BREAKOUT</option>
-                <option value="ORDERBOOK_IMBALANCE">ORDERBOOK_IMBALANCE</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">marketId</span>
-              <TextInput name="marketId" required />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">tokenId (or &quot;auto&quot; for two-sided)</span>
-              <TextInput name="tokenId" defaultValue="auto" required />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">side</span>
-              <select name="side" className={selectClass}>
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">threshold comparator</span>
-              <select name="comparator" className={selectClass}>
-                <option value="gte">gte</option>
-                <option value="lte">lte</option>
-              </select>
-            </label>
-
-            {/* THRESHOLD_BREAKOUT params */}
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">threshold</span>
-              <TextInput name="threshold" type="number" step="0.001" defaultValue="0.55" />
-            </label>
-
-            {/* ORDERBOOK_IMBALANCE params */}
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max spread (imbalance)</span>
-              <TextInput name="maxSpread" type="number" step="0.001" defaultValue="0.02" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">min top depth</span>
-              <TextInput name="minTopDepth" type="number" step="1" defaultValue="50" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">imbalance ratio</span>
-              <TextInput name="imbalanceRatio" type="number" step="0.01" defaultValue="0.65" />
-            </label>
-
-            {/* TWO_SIDED_RANGE_QUOTING params */}
-            <div className="md:col-span-2 mt-2 border-t border-[var(--line)] pt-3">
-              <p className="text-xs font-medium text-[var(--muted)] mb-3">区间挂单参数 (TWO_SIDED_RANGE_QUOTING)</p>
-            </div>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">entry low</span>
-              <TextInput name="entryLow" type="number" step="0.01" defaultValue="0.36" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">entry high</span>
-              <TextInput name="entryHigh" type="number" step="0.01" defaultValue="0.42" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">exit low</span>
-              <TextInput name="exitLow" type="number" step="0.01" defaultValue="0.58" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">exit high</span>
-              <TextInput name="exitHigh" type="number" step="0.01" defaultValue="0.64" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">order size</span>
-              <TextInput name="orderSize" type="number" step="0.01" defaultValue="5" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max inventory per side</span>
-              <TextInput name="maxInventoryPerSide" type="number" step="1" defaultValue="25" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max inventory per market</span>
-              <TextInput name="maxInventoryPerMarket" type="number" step="1" defaultValue="40" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max open orders per side</span>
-              <TextInput name="maxOpenOrdersPerSide" type="number" step="1" defaultValue="2" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">min liquidity (USD)</span>
-              <TextInput name="minLiquidity" type="number" step="100" defaultValue="10000" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">min volume 24h (USD)</span>
-              <TextInput name="minVolume24h" type="number" step="100" defaultValue="1000" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">min book depth (USD)</span>
-              <TextInput name="minBookDepth" type="number" step="10" defaultValue="200" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max spread (range)</span>
-              <TextInput name="rangeMaxSpread" type="number" step="0.01" defaultValue="0.08" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">min time to expiry (minutes)</span>
-              <TextInput name="minTimeToExpiryMinutes" type="number" step="60" defaultValue="4320" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">quote refresh (seconds)</span>
-              <TextInput name="quoteRefreshSeconds" type="number" step="5" defaultValue="60" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">stale quote (seconds)</span>
-              <TextInput name="staleQuoteSeconds" type="number" step="10" defaultValue="300" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">scan interval (seconds)</span>
-              <TextInput name="scanIntervalSeconds" type="number" step="10" defaultValue="300" />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">trend filter threshold</span>
-              <TextInput name="trendFilterThreshold" type="number" step="0.01" defaultValue="0.10" />
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="trendFilterEnabled" defaultChecked />
-              trend filter
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="allowBothSidesInventory" defaultChecked />
-              allow both sides inventory
-            </label>
-
-            {/* Common params */}
-            <div className="md:col-span-2 mt-2 border-t border-[var(--line)] pt-3">
-              <p className="text-xs font-medium text-[var(--muted)] mb-3">通用参数</p>
-            </div>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max order size</span>
-              <TextInput name="maxOrderSize" type="number" step="0.01" defaultValue="5" required />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">max daily trade count</span>
-              <TextInput name="maxDailyTradeCount" type="number" step="1" defaultValue="10" required />
-            </label>
-            <label className="text-sm">
-              <span className="mb-2 block text-[var(--muted)]">cooldown seconds</span>
-              <TextInput name="cooldownSeconds" type="number" step="1" defaultValue="30" required />
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="pauseOnStaleData" defaultChecked />
-              pause on stale data
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="cancelOpenOrdersOnStaleData" />
-              cancel open orders on stale data
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="dryRun" defaultChecked />
-              dry-run
-            </label>
-            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
-              <input type="checkbox" name="enabled" defaultChecked />
-              enabled
-            </label>
-            <div className="md:col-span-2">
-              <SubmitButton pendingLabel="保存中...">保存策略</SubmitButton>
-            </div>
-          </form>
+          <StrategyForm action={createStrategyAction} />
         </SectionCard>
 
         <SectionCard title="策略列表" description="来源: local DB">

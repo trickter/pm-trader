@@ -108,6 +108,24 @@ export default async function SettingsPage() {
               </p>
               <p className="mt-2 text-[var(--muted)]">reason: {readiness.blockReason ?? "none"}</p>
             </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
+              <p className="font-medium">last market message</p>
+              <p className="mt-2 text-[var(--muted)]">{formatDate(readiness.lastMarketMessageAt)}</p>
+              <p className="mt-2 text-[var(--muted)]">last market reconcile: {formatDate(readiness.lastMarketReconciledAt)}</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
+              <p className="font-medium">last user message</p>
+              <p className="mt-2 text-[var(--muted)]">{formatDate(readiness.lastUserMessageAt)}</p>
+              <p className="mt-2 text-[var(--muted)]">last user reconcile: {formatDate(readiness.lastUserReconciledAt)}</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3 md:col-span-2">
+              <p className="font-medium">reconcile diagnostics</p>
+              <p className="mt-2 text-[var(--muted)]">status: {String(readiness.healthDetails.lastReconcileStatus ?? "unknown")}</p>
+              <p className="mt-2 text-[var(--muted)]">reason: {String(readiness.healthDetails.lastReconcileReason ?? "none")}</p>
+              <p className="mt-2 text-[var(--muted)]">attempt: {String(readiness.healthDetails.reconcileAttempt ?? 0)}</p>
+              <p className="mt-2 text-[var(--muted)]">failure count: {String(readiness.healthDetails.reconcileFailureCount ?? 0)}</p>
+              <p className="mt-2 break-words text-[var(--muted)]">last error: {String(readiness.healthDetails.lastReconcileError ?? "none")}</p>
+            </div>
           </div>
         </SectionCard>
 

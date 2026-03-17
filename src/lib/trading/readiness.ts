@@ -16,6 +16,11 @@ export type TradingReadiness = {
   blockReason: string | null;
   maxMarketDataStalenessMs: number;
   maxUserStateStalenessMs: number;
+  lastMarketMessageAt: Date | null;
+  lastUserMessageAt: Date | null;
+  lastMarketReconciledAt: Date | null;
+  lastUserReconciledAt: Date | null;
+  healthDetails: Record<string, unknown>;
 };
 
 export async function getTradingReadiness() {
@@ -50,6 +55,11 @@ export async function getTradingReadiness() {
     blockReason: health.blockReason,
     maxMarketDataStalenessMs: runtime.maxMarketDataStalenessMs,
     maxUserStateStalenessMs: runtime.maxUserStateStalenessMs,
+    lastMarketMessageAt: health.lastMarketMessageAt,
+    lastUserMessageAt: health.lastUserMessageAt,
+    lastMarketReconciledAt: health.lastMarketReconciledAt,
+    lastUserReconciledAt: health.lastUserReconciledAt,
+    healthDetails: health.details,
   } satisfies TradingReadiness;
 }
 
