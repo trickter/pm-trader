@@ -15,6 +15,7 @@ import { ensurePolymarketTargetsTracked, reconcileTradingState } from "@/lib/pol
 import { getTradingScope } from "@/lib/polymarket/server-config";
 import { assertManualRisk, audit } from "@/lib/risk/engine";
 import { runStrategyEngineOnce } from "@/lib/strategy/engine";
+import { parseScopeParams } from "@/lib/strategy/config";
 import {
   orderbookImbalanceParamsSchema,
   thresholdBreakoutParamsSchema,
@@ -26,8 +27,9 @@ import { assertTradingAllowedForExecution } from "@/lib/trading/readiness";
 const strategySchema = z.object({
   name: z.string().min(2),
   type: z.enum(["THRESHOLD_BREAKOUT", "ORDERBOOK_IMBALANCE", "TWO_SIDED_RANGE_QUOTING"]),
-  marketId: z.string().min(1),
-  tokenId: z.string().min(1),
+  scopeType: z.enum(["STATIC_MARKET", "DISCOVERY_QUERY"]).optional(),
+  marketId: z.string().optional(),
+  tokenId: z.string().optional(),
   side: z.enum(["BUY", "SELL"]),
   maxOrderSize: z.coerce.number().positive(),
   maxDailyTradeCount: z.coerce.number().int().positive(),
@@ -58,9 +60,8 @@ const strategySchema = z.object({
   minBookDepth: z.coerce.number().optional(),
   rangeMaxSpread: z.coerce.number().optional(),
   minTimeToExpiryMinutes: z.coerce.number().optional(),
-  quoteRefreshSeconds: z.coerce.number().optional(),
-  staleQuoteSeconds: z.coerce.number().optional(),
-  scanIntervalSeconds: z.coerce.number().optional(),
+  minTopLevelSize: z.coerce.number().optional(),
+  maxQuoteAgeMs: z.coerce.number().optional(),
   trendFilterEnabled: z.coerce.boolean().optional(),
   trendFilterThreshold: z.coerce.number().optional(),
   allowBothSidesInventory: z.coerce.boolean().optional(),
@@ -74,6 +75,7 @@ export async function createStrategyAction(formData: FormData) {
   const values = strategySchema.parse({
     name: formData.get("name"),
     type: formData.get("type"),
+    scopeType: formData.get("scopeType"),
     marketId: formData.get("marketId"),
     tokenId: formData.get("tokenId"),
     side: formData.get("side"),
@@ -103,12 +105,26 @@ export async function createStrategyAction(formData: FormData) {
     minBookDepth: formData.get("minBookDepth"),
     rangeMaxSpread: formData.get("rangeMaxSpread"),
     minTimeToExpiryMinutes: formData.get("minTimeToExpiryMinutes"),
-    quoteRefreshSeconds: formData.get("quoteRefreshSeconds"),
-    staleQuoteSeconds: formData.get("staleQuoteSeconds"),
-    scanIntervalSeconds: formData.get("scanIntervalSeconds"),
+    minTopLevelSize: formData.get("minTopLevelSize"),
+    maxQuoteAgeMs: formData.get("maxQuoteAgeMs"),
     trendFilterEnabled: formData.get("trendFilterEnabled") === "on",
     trendFilterThreshold: formData.get("trendFilterThreshold"),
     allowBothSidesInventory: formData.get("allowBothSidesInventory") === "on",
+  });
+
+  const scope = parseScopeParams({
+    type: values.type as StrategyType,
+    scopeType: values.scopeType as "STATIC_MARKET" | "DISCOVERY_QUERY" | undefined,
+    values: {
+      marketId: values.marketId,
+      tokenId: values.tokenId,
+      maxMarketsTracked: values.maxMarketsTracked,
+      minLiquidity: values.minLiquidity,
+      minVolume24h: values.minVolume24h,
+      minBookDepth: values.minBookDepth,
+      rangeMaxSpread: values.rangeMaxSpread,
+      minTimeToExpiryMinutes: values.minTimeToExpiryMinutes,
+    },
   });
 
   let triggerParams;
@@ -133,27 +149,31 @@ export async function createStrategyAction(formData: FormData) {
       maxInventoryPerSide: values.maxInventoryPerSide ?? 25,
       maxInventoryPerMarket: values.maxInventoryPerMarket ?? 40,
       maxOpenOrdersPerSide: values.maxOpenOrdersPerSide ?? 2,
-      maxMarketsTracked: values.maxMarketsTracked ?? 10,
-      minLiquidity: values.minLiquidity ?? 10000,
-      minVolume24h: values.minVolume24h ?? 1000,
-      minBookDepth: values.minBookDepth ?? 200,
       maxSpread: values.rangeMaxSpread ?? 0.08,
-      minTimeToExpiryMinutes: values.minTimeToExpiryMinutes ?? 4320,
-      quoteRefreshSeconds: values.quoteRefreshSeconds ?? 60,
-      staleQuoteSeconds: values.staleQuoteSeconds ?? 300,
-      scanIntervalSeconds: values.scanIntervalSeconds ?? 300,
+      minTopLevelSize: values.minTopLevelSize ?? 0,
+      maxQuoteAgeMs: values.maxQuoteAgeMs ?? 5000,
       trendFilterEnabled: values.trendFilterEnabled ?? true,
       trendFilterThreshold: values.trendFilterThreshold ?? 0.10,
       allowBothSidesInventory: values.allowBothSidesInventory ?? true,
     });
   }
 
+  const staticTarget =
+    scope.scopeType === "STATIC_MARKET"
+      ? {
+          marketId: String((scope.scopeParams as { marketId: string }).marketId),
+          tokenId: String((scope.scopeParams as { tokenId: string }).tokenId),
+        }
+      : { marketId: null, tokenId: null };
+
   await db.strategy.create({
     data: {
       name: values.name,
       type: values.type as StrategyType,
-      marketId: values.marketId,
-      tokenId: values.tokenId,
+      scopeType: scope.scopeType,
+      scopeParams: scope.scopeParams,
+      marketId: staticTarget.marketId,
+      tokenId: staticTarget.tokenId,
       side: values.side as StrategySide,
       triggerParams,
       maxOrderSize: values.maxOrderSize,

@@ -13,6 +13,11 @@ enum StrategyType {
   TWO_SIDED_RANGE_QUOTING
 }
 
+enum StrategyScopeType {
+  STATIC_MARKET
+  DISCOVERY_QUERY
+}
+
 enum StrategySide {
   BUY
   SELL
@@ -78,8 +83,10 @@ model Strategy {
   id                 String        @id @default(cuid())
   name               String
   type               StrategyType
-  marketId           String
-  tokenId            String
+  scopeType          StrategyScopeType @default(STATIC_MARKET)
+  scopeParams        Json
+  marketId           String?
+  tokenId            String?
   side               StrategySide
   triggerParams      Json
   maxOrderSize       Decimal       @db.Decimal(20, 8)

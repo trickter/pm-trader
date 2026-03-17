@@ -23,19 +23,9 @@ export const twoSidedRangeQuotingParamsSchema = z.object({
   maxInventoryPerSide: z.coerce.number().int().positive(),
   maxInventoryPerMarket: z.coerce.number().int().positive(),
   maxOpenOrdersPerSide: z.coerce.number().int().positive().default(2),
-
-  // Market selection
-  maxMarketsTracked: z.coerce.number().int().positive().default(10),
-  minLiquidity: z.coerce.number().nonnegative().default(10000),
-  minVolume24h: z.coerce.number().nonnegative().default(1000),
-  minBookDepth: z.coerce.number().nonnegative().default(200),
   maxSpread: z.coerce.number().min(0).max(1).default(0.08),
-  minTimeToExpiryMinutes: z.coerce.number().int().nonnegative().default(4320),
-
-  // Execution control
-  quoteRefreshSeconds: z.coerce.number().int().positive().default(60),
-  staleQuoteSeconds: z.coerce.number().int().positive().default(300),
-  scanIntervalSeconds: z.coerce.number().int().positive().default(300),
+  minTopLevelSize: z.coerce.number().nonnegative().default(0),
+  maxQuoteAgeMs: z.coerce.number().int().positive().default(5000),
 
   // Risk filters
   trendFilterEnabled: z.coerce.boolean().default(true),

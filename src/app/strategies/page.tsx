@@ -5,6 +5,7 @@ import { StrategyForm } from "@/components/strategies/strategy-form";
 import { EmptyState, SectionCard, StatCard, StatusPill } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { humanConfirmationTodos } from "@/lib/mvp-facts";
+import { getDiscoveryScope, getStaticTarget } from "@/lib/strategy/config";
 import { formatDate, truncateHash } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,14 @@ export default async function StrategiesPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{strategy.name}</p>
                       <p className="mt-1 truncate text-xs text-[var(--muted)]">
-                        {strategy.type} · {strategy.side} · <span className="font-mono" title={strategy.marketId}>{truncateHash(strategy.marketId, 8, 6)}</span>
+                        {strategy.type} · {strategy.side} ·{" "}
+                        {strategy.scopeType === "DISCOVERY_QUERY" ? (
+                          <span>DISCOVERY_QUERY</span>
+                        ) : (
+                          <span className="font-mono" title={getStaticTarget(strategy)?.marketId ?? strategy.marketId ?? undefined}>
+                            {truncateHash(getStaticTarget(strategy)?.marketId ?? strategy.marketId ?? undefined, 8, 6)}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -64,6 +72,12 @@ export default async function StrategiesPage() {
                   </div>
                   <p className="mt-2 text-xs text-[var(--muted)]">
                     stale guard: {strategy.pauseOnStaleData ? "pause" : "ignore"} / {strategy.cancelOpenOrdersOnStaleData ? "cancel open orders" : "keep orders"}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    scope: {strategy.scopeType}
+                    {strategy.scopeType === "DISCOVERY_QUERY"
+                      ? ` · max markets ${getDiscoveryScope(strategy)?.maxMarketsTracked ?? "--"}`
+                      : ` · token ${truncateHash(getStaticTarget(strategy)?.tokenId ?? strategy.tokenId ?? undefined, 8, 6)}`}
                   </p>
                   {strategy.systemPausedAt ? (
                     <p className="mt-1 text-xs text-[var(--muted)]">

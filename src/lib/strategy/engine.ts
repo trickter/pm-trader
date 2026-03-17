@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
 import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
+import { getStaticTarget } from "@/lib/strategy/config";
 import { evaluateOrderbookImbalance } from "@/lib/strategy/rules/spread-imbalance";
 import { evaluateThresholdBreakout } from "@/lib/strategy/rules/threshold-breakout";
 import { executeRangeQuotingStrategy } from "@/lib/strategy/range-engine";
@@ -42,10 +43,22 @@ async function executeStrategy(strategyId: string) {
     return executeRangeQuotingStrategy(strategyId);
   }
 
-  const market = await getMarketById(strategy.marketId);
+  const target = getStaticTarget(strategy);
+  if (!target) {
+    await db.strategyRun.create({
+      data: {
+        strategyId: strategy.id,
+        status: "error",
+        summary: "Missing static market scope",
+      },
+    });
+    return null;
+  }
+
+  const market = await getMarketById(target.marketId);
   const quote = await assertFreshMarketData({
-    marketId: strategy.marketId,
-    tokenId: strategy.tokenId,
+    marketId: target.marketId,
+    tokenId: target.tokenId,
     conditionId: market.conditionId ?? undefined,
   });
   const topBid = quote.book?.bids[0];
@@ -114,8 +127,8 @@ async function executeStrategy(strategyId: string) {
   const signal = await db.signal.create({
     data: {
       strategyId: strategy.id,
-      marketId: strategy.marketId,
-      tokenId: strategy.tokenId,
+      marketId: target.marketId,
+      tokenId: target.tokenId,
       signalType: signalCandidate.signalType as SignalType,
       side: strategy.side,
       reason: signalCandidate.reason,
@@ -140,14 +153,14 @@ async function executeStrategy(strategyId: string) {
   try {
     await assertRiskBeforeOrder({
       strategyId: strategy.id,
-      conditionId: market.conditionId ?? strategy.marketId,
+      conditionId: market.conditionId ?? target.marketId,
       size: Number(strategy.maxOrderSize),
       signalHash,
       traderAddress: env.POLYMARKET_TRADER_ADDRESS || undefined,
     });
 
     const response = await placeLimitOrder({
-      tokenId: strategy.tokenId,
+      tokenId: target.tokenId,
       side: strategy.side,
       size: Number(strategy.maxOrderSize),
       price: observedPrice,
@@ -159,8 +172,8 @@ async function executeStrategy(strategyId: string) {
       data: {
         strategyId: strategy.id,
         signalId: signal.id,
-        marketId: strategy.marketId,
-        tokenId: strategy.tokenId,
+        marketId: target.marketId,
+        tokenId: target.tokenId,
         polymarketOrderId: response.orderID ?? null,
         side: strategy.side,
         price: observedPrice,
@@ -201,8 +214,8 @@ async function executeStrategy(strategyId: string) {
       data: {
         strategyId: strategy.id,
         signalId: signal.id,
-        marketId: strategy.marketId,
-        tokenId: strategy.tokenId,
+        marketId: target.marketId,
+        tokenId: target.tokenId,
         side: strategy.side,
         price: observedPrice,
         size: Number(strategy.maxOrderSize),
@@ -238,8 +251,8 @@ export async function runStrategyEngineOnce() {
 
     await ensurePolymarketTargetsTracked(
       strategies.map((strategy) => ({
-        marketId: strategy.marketId,
-        tokenId: strategy.tokenId === "auto" ? undefined : strategy.tokenId,
+        marketId: getStaticTarget(strategy)?.marketId,
+        tokenId: getStaticTarget(strategy)?.tokenId,
       })),
     );
 

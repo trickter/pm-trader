@@ -1,5 +1,6 @@
 "use client";
 
+import { StrategyScopeType, StrategyType } from "@prisma/client";
 import { useMemo, useState } from "react";
 
 import { SubmitButton } from "@/components/forms/submit-button";
@@ -10,7 +11,6 @@ import {
   strategyFormDefinitions,
   strategyTypeOptions,
   type StrategyFormField,
-  type StrategyTypeOption,
 } from "@/lib/strategy/form-config";
 
 type StrategyFormProps = {
@@ -20,33 +20,54 @@ type StrategyFormProps = {
 const checkboxClass = "flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm";
 
 export function StrategyForm({ action }: StrategyFormProps) {
-  const [selectedType, setSelectedType] = useState<StrategyTypeOption>("TWO_SIDED_RANGE_QUOTING");
+  const [selectedType, setSelectedType] = useState<StrategyType>(StrategyType.TWO_SIDED_RANGE_QUOTING);
+  const [selectedScopeType, setSelectedScopeType] = useState<StrategyScopeType>(StrategyScopeType.DISCOVERY_QUERY);
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
-    getStrategyFormDefaults("TWO_SIDED_RANGE_QUOTING"),
+    getStrategyFormDefaults(StrategyType.TWO_SIDED_RANGE_QUOTING, StrategyScopeType.DISCOVERY_QUERY),
   );
 
   const definition = strategyFormDefinitions[selectedType];
+  const scopeType = definition.supportedScopes.includes(selectedScopeType)
+    ? selectedScopeType
+    : definition.supportedScopes[0];
+  const scopeDefinition = definition.scopeDefinitions[scopeType];
   const sections = useMemo(
-    () => [...commonStrategySections, ...definition.sections],
-    [definition.sections],
+    () => [...commonStrategySections, ...(scopeDefinition?.sections ?? []), ...definition.triggerSections],
+    [definition.triggerSections, scopeDefinition],
   );
 
-  const updateType = (nextType: StrategyTypeOption) => {
+  const mergeDefaults = (
+    nextType: StrategyType,
+    nextScopeType: StrategyScopeType,
+    current: Record<string, string | boolean>,
+  ) => ({
+    ...getStrategyFormDefaults(nextType, nextScopeType),
+    name: String(current.name ?? ""),
+    maxOrderSize: String(current.maxOrderSize ?? getStrategyFormDefaults(nextType, nextScopeType).maxOrderSize ?? ""),
+    maxDailyTradeCount: String(
+      current.maxDailyTradeCount ?? getStrategyFormDefaults(nextType, nextScopeType).maxDailyTradeCount ?? "",
+    ),
+    cooldownSeconds: String(
+      current.cooldownSeconds ?? getStrategyFormDefaults(nextType, nextScopeType).cooldownSeconds ?? "",
+    ),
+    pauseOnStaleData: Boolean(current.pauseOnStaleData ?? true),
+    cancelOpenOrdersOnStaleData: Boolean(current.cancelOpenOrdersOnStaleData ?? false),
+    dryRun: Boolean(current.dryRun ?? true),
+    enabled: Boolean(current.enabled ?? true),
+    type: nextType,
+    scopeType: nextScopeType,
+  });
+
+  const updateType = (nextType: StrategyType) => {
+    const nextScopeType = strategyFormDefinitions[nextType].supportedScopes[0];
     setSelectedType(nextType);
-    setValues((current) => ({
-      ...current,
-      ...getStrategyFormDefaults(nextType),
-      name: String(current.name ?? ""),
-      marketId: String(current.marketId ?? ""),
-      maxOrderSize: String(current.maxOrderSize ?? getStrategyFormDefaults(nextType).maxOrderSize ?? ""),
-      maxDailyTradeCount: String(current.maxDailyTradeCount ?? getStrategyFormDefaults(nextType).maxDailyTradeCount ?? ""),
-      cooldownSeconds: String(current.cooldownSeconds ?? getStrategyFormDefaults(nextType).cooldownSeconds ?? ""),
-      pauseOnStaleData: Boolean(current.pauseOnStaleData ?? true),
-      cancelOpenOrdersOnStaleData: Boolean(current.cancelOpenOrdersOnStaleData ?? false),
-      dryRun: Boolean(current.dryRun ?? true),
-      enabled: Boolean(current.enabled ?? true),
-      type: nextType,
-    }));
+    setSelectedScopeType(nextScopeType);
+    setValues((current) => mergeDefaults(nextType, nextScopeType, current));
+  };
+
+  const updateScopeType = (nextScopeType: StrategyScopeType) => {
+    setSelectedScopeType(nextScopeType);
+    setValues((current) => mergeDefaults(selectedType, nextScopeType, current));
   };
 
   const setValue = (name: string, value: string | boolean) => {
@@ -60,11 +81,7 @@ export function StrategyForm({ action }: StrategyFormProps) {
     <form action={action} className="grid gap-4 md:grid-cols-2">
       <label className="text-sm">
         <span className="mb-2 block text-[var(--muted)]">type</span>
-        <Select
-          name="type"
-          value={selectedType}
-          onChange={(event) => updateType(event.target.value as StrategyTypeOption)}
-        >
+        <Select name="type" value={selectedType} onChange={(event) => updateType(event.target.value as StrategyType)}>
           {strategyTypeOptions.map((type) => (
             <option key={type} value={type}>
               {type}
@@ -72,10 +89,37 @@ export function StrategyForm({ action }: StrategyFormProps) {
           ))}
         </Select>
       </label>
-      <div className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm md:col-span-1">
+
+      <div className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
         <p className="font-medium">{definition.label}</p>
         <p className="mt-2 text-[var(--muted)]">{definition.description}</p>
       </div>
+
+      {definition.supportedScopes.length > 1 ? (
+        <label className="text-sm md:col-span-2">
+          <span className="mb-2 block text-[var(--muted)]">scope type</span>
+          <Select
+            name="scopeType"
+            value={scopeType}
+            onChange={(event) => updateScopeType(event.target.value as StrategyScopeType)}
+          >
+            {definition.supportedScopes.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate}
+              </option>
+            ))}
+          </Select>
+        </label>
+      ) : (
+        <input type="hidden" name="scopeType" value={scopeType} />
+      )}
+
+      {scopeDefinition ? (
+        <div className="rounded-2xl border border-[var(--line)] px-4 py-3 text-sm md:col-span-2">
+          <p className="font-medium">{scopeDefinition.label}</p>
+          <p className="mt-2 text-[var(--muted)]">{scopeDefinition.description}</p>
+        </div>
+      ) : null}
 
       {sections.map((section) => (
         <div key={section.key} className="contents">
@@ -102,14 +146,7 @@ function renderField(
   setValue: (name: string, value: string | boolean) => void,
 ) {
   if (field.kind === "hidden") {
-    return (
-      <input
-        key={field.name}
-        type="hidden"
-        name={field.name}
-        value={String(currentValue ?? field.defaultValue ?? "")}
-      />
-    );
+    return <input key={field.name} type="hidden" name={field.name} value={String(currentValue ?? field.defaultValue ?? "")} />;
   }
 
   if (field.kind === "checkbox") {

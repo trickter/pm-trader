@@ -3,6 +3,7 @@ import { logger } from "@/lib/logger";
 import { discoverMarkets } from "@/lib/polymarket/gamma";
 import { getMarketQuote } from "@/lib/polymarket/clob-public";
 import type { GammaMarket, ClobOrderBook } from "@/lib/polymarket/types";
+import type { DiscoveryQueryScopeParams } from "@/lib/strategy/config";
 import type { TwoSidedRangeQuotingParams } from "@/lib/strategy/types";
 import { toInputJson } from "@/lib/utils";
 
@@ -122,9 +123,10 @@ function scoreTimeToExpiry(endDate: string | null | undefined, minMinutes: numbe
  */
 export async function scanMarketsForRangeQuoting(
   params: TwoSidedRangeQuotingParams,
+  scope: DiscoveryQueryScopeParams,
   options: { limit?: number } = {},
 ): Promise<MarketSuitabilityResult[]> {
-  const limit = options.limit ?? params.maxMarketsTracked * 3;
+  const limit = options.limit ?? scope.maxMarketsTracked * 3;
 
   // Fetch active markets
   let markets: GammaMarket[];
@@ -145,12 +147,12 @@ export async function scanMarketsForRangeQuoting(
     // Time to expiry check
     if (m.endDate) {
       const msRemaining = new Date(m.endDate).getTime() - Date.now();
-      if (msRemaining < params.minTimeToExpiryMinutes * 60000) return false;
+      if (msRemaining < scope.minTimeToExpiryMinutes * 60000) return false;
     }
 
     // Liquidity floor
     const liq = Number(m.liquidity ?? 0);
-    if (liq < params.minLiquidity) return false;
+    if (liq < scope.minLiquidity) return false;
 
     return true;
   });
@@ -180,11 +182,11 @@ export async function scanMarketsForRangeQuoting(
 
         // Compute sub-scores
         const priceRangeScore = scorePriceRange(midPrice, params.entryLow, params.entryHigh);
-        const liquidityScore = scoreLiquidity(Number(market.liquidity ?? 0), params.minLiquidity);
-        const volumeScore = scoreVolume(Number(market.volume24hr ?? market.volume ?? 0), params.minVolume24h);
-        const bookDepthScore = scoreBookDepth(quote.book, params.minBookDepth);
-        const spreadScore = scoreSpread(spread, params.maxSpread);
-        const timeToExpiryScore = scoreTimeToExpiry(market.endDate, params.minTimeToExpiryMinutes);
+        const liquidityScore = scoreLiquidity(Number(market.liquidity ?? 0), scope.minLiquidity);
+        const volumeScore = scoreVolume(Number(market.volume24hr ?? market.volume ?? 0), scope.minVolume24h);
+        const bookDepthScore = scoreBookDepth(quote.book, scope.minBookDepth);
+        const spreadScore = scoreSpread(spread, scope.maxSpread);
+        const timeToExpiryScore = scoreTimeToExpiry(market.endDate, scope.minTimeToExpiryMinutes);
 
         // Weighted total
         const score = Math.round(

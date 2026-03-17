@@ -5,6 +5,7 @@ import { z } from "zod";
 import { verifyBearerToken } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/risk/engine";
+import { parseScopeParams } from "@/lib/strategy/config";
 import { orderbookImbalanceParamsSchema, thresholdBreakoutParamsSchema } from "@/lib/strategy/types";
 
 const bodySchema = z.object({
@@ -53,6 +54,14 @@ export async function POST(request: Request) {
     data: {
       name: values.name,
       type: values.type as StrategyType,
+      scopeType: "STATIC_MARKET",
+      scopeParams: parseScopeParams({
+        type: values.type as StrategyType,
+        values: {
+          marketId: values.marketId,
+          tokenId: values.tokenId,
+        },
+      }).scopeParams,
       marketId: values.marketId,
       tokenId: values.tokenId,
       side: values.side as StrategySide,

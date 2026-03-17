@@ -1,17 +1,16 @@
-export const strategyTypeOptions = [
-  "TWO_SIDED_RANGE_QUOTING",
-  "THRESHOLD_BREAKOUT",
-  "ORDERBOOK_IMBALANCE",
-] as const;
+import { StrategyScopeType, StrategyType } from "@prisma/client";
 
-export type StrategyTypeOption = (typeof strategyTypeOptions)[number];
+export const strategyTypeOptions = Object.values(StrategyType);
+export type StrategyTypeOption = StrategyType;
+
+export const strategyScopeTypeOptions = Object.values(StrategyScopeType);
+export type StrategyScopeTypeOption = StrategyScopeType;
 
 type BaseField = {
   name: string;
   label: string;
   hint?: string;
   required?: boolean;
-  className?: string;
 };
 
 type TextLikeField = BaseField & {
@@ -43,10 +42,18 @@ export type StrategyFormSection = {
   fields: StrategyFormField[];
 };
 
-type StrategyFormDefinition = {
+type StrategyScopeDefinition = {
   label: string;
   description: string;
   sections: StrategyFormSection[];
+};
+
+type StrategyFormDefinition = {
+  label: string;
+  description: string;
+  supportedScopes: StrategyScopeTypeOption[];
+  scopeDefinitions: Partial<Record<StrategyScopeTypeOption, StrategyScopeDefinition>>;
+  triggerSections: StrategyFormSection[];
 };
 
 export const commonStrategySections: StrategyFormSection[] = [
@@ -60,19 +67,7 @@ export const commonStrategySections: StrategyFormSection[] = [
         placeholder: "Range quoting on mid-prob market",
         required: true,
       },
-      {
-        kind: "text",
-        name: "marketId",
-        label: "marketId",
-        required: true,
-      },
     ],
-  },
-  {
-    key: "routing",
-    title: "策略路由",
-    description: "只展示当前策略类型真正会使用或必须落库的参数。",
-    fields: [],
   },
   {
     key: "execution",
@@ -129,20 +124,106 @@ export const commonStrategySections: StrategyFormSection[] = [
   },
 ];
 
+const staticMarketScope: StrategyScopeDefinition = {
+  label: "STATIC_MARKET",
+  description: "固定市场策略。你明确指定 market 和 token，策略只在该目标上运行。",
+  sections: [
+    {
+      key: "scope-static-market",
+      title: "目标市场",
+      fields: [
+        {
+          kind: "text",
+          name: "marketId",
+          label: "marketId",
+          required: true,
+        },
+        {
+          kind: "text",
+          name: "tokenId",
+          label: "tokenId",
+          required: true,
+        },
+      ],
+    },
+  ],
+};
+
+const discoveryQueryScope: StrategyScopeDefinition = {
+  label: "DISCOVERY_QUERY",
+  description: "扫描型策略。先按条件筛选 market，再对候选 market 执行双边挂单。",
+  sections: [
+    {
+      key: "scope-discovery",
+      title: "市场扫描条件",
+      fields: [
+        {
+          kind: "number",
+          name: "maxMarketsTracked",
+          label: "max markets tracked",
+          step: "1",
+          min: "1",
+          defaultValue: "10",
+        },
+        {
+          kind: "number",
+          name: "minLiquidity",
+          label: "min liquidity (USD)",
+          step: "100",
+          min: "0",
+          defaultValue: "10000",
+        },
+        {
+          kind: "number",
+          name: "minVolume24h",
+          label: "min volume 24h (USD)",
+          step: "100",
+          min: "0",
+          defaultValue: "1000",
+        },
+        {
+          kind: "number",
+          name: "minBookDepth",
+          label: "min book depth (USD)",
+          step: "10",
+          min: "0",
+          defaultValue: "200",
+        },
+        {
+          kind: "number",
+          name: "rangeMaxSpread",
+          label: "max spread (selection)",
+          step: "0.01",
+          min: "0",
+          max: "1",
+          defaultValue: "0.08",
+        },
+        {
+          kind: "number",
+          name: "minTimeToExpiryMinutes",
+          label: "min time to expiry (minutes)",
+          step: "60",
+          min: "0",
+          defaultValue: "4320",
+        },
+      ],
+    },
+  ],
+};
+
 export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDefinition> = {
-  THRESHOLD_BREAKOUT: {
-    label: "THRESHOLD_BREAKOUT",
+  [StrategyType.THRESHOLD_BREAKOUT]: {
+    label: StrategyType.THRESHOLD_BREAKOUT,
     description: "价格阈值突破后触发单边信号。",
-    sections: [
+    supportedScopes: [StrategyScopeType.STATIC_MARKET],
+    scopeDefinitions: {
+      [StrategyScopeType.STATIC_MARKET]: staticMarketScope,
+    },
+    triggerSections: [
       {
-        key: "routing-threshold",
+        key: "trigger-threshold-routing",
+        title: "策略方向",
         fields: [
-          {
-            kind: "text",
-            name: "tokenId",
-            label: "tokenId",
-            required: true,
-          },
           {
             kind: "select",
             name: "side",
@@ -182,19 +263,18 @@ export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDef
       },
     ],
   },
-  ORDERBOOK_IMBALANCE: {
-    label: "ORDERBOOK_IMBALANCE",
+  [StrategyType.ORDERBOOK_IMBALANCE]: {
+    label: StrategyType.ORDERBOOK_IMBALANCE,
     description: "按买一卖一深度失衡与点差约束触发单边信号。",
-    sections: [
+    supportedScopes: [StrategyScopeType.STATIC_MARKET],
+    scopeDefinitions: {
+      [StrategyScopeType.STATIC_MARKET]: staticMarketScope,
+    },
+    triggerSections: [
       {
-        key: "routing-imbalance",
+        key: "trigger-imbalance-routing",
+        title: "策略方向",
         fields: [
-          {
-            kind: "text",
-            name: "tokenId",
-            label: "tokenId",
-            required: true,
-          },
           {
             kind: "select",
             name: "side",
@@ -240,32 +320,24 @@ export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDef
       },
     ],
   },
-  TWO_SIDED_RANGE_QUOTING: {
-    label: "TWO_SIDED_RANGE_QUOTING",
-    description: "双边区间挂单策略，自动按 YES/NO 两侧扫描和管理库存。",
-    sections: [
+  [StrategyType.TWO_SIDED_RANGE_QUOTING]: {
+    label: StrategyType.TWO_SIDED_RANGE_QUOTING,
+    description: "扫描候选 market 后，在符合条件的市场上做双边区间挂单。",
+    supportedScopes: [StrategyScopeType.DISCOVERY_QUERY],
+    scopeDefinitions: {
+      [StrategyScopeType.DISCOVERY_QUERY]: discoveryQueryScope,
+    },
+    triggerSections: [
       {
-        key: "routing-range",
+        key: "range-pricing",
+        title: "区间价格参数",
         fields: [
-          {
-            kind: "text",
-            name: "tokenId",
-            label: 'tokenId (use "auto" for two-sided)',
-            defaultValue: "auto",
-            required: true,
-          },
           {
             kind: "hidden",
             name: "side",
             label: "side",
             defaultValue: "BUY",
           },
-        ],
-      },
-      {
-        key: "range-pricing",
-        title: "区间价格参数",
-        fields: [
           {
             kind: "number",
             name: "entryLow",
@@ -343,45 +415,13 @@ export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDef
         ],
       },
       {
-        key: "range-market-selection",
-        title: "市场筛选参数",
+        key: "range-quote-guard",
+        title: "WebSocket 报价约束",
         fields: [
           {
             kind: "number",
-            name: "maxMarketsTracked",
-            label: "max markets tracked",
-            step: "1",
-            min: "1",
-            defaultValue: "10",
-          },
-          {
-            kind: "number",
-            name: "minLiquidity",
-            label: "min liquidity (USD)",
-            step: "100",
-            min: "0",
-            defaultValue: "10000",
-          },
-          {
-            kind: "number",
-            name: "minVolume24h",
-            label: "min volume 24h (USD)",
-            step: "100",
-            min: "0",
-            defaultValue: "1000",
-          },
-          {
-            kind: "number",
-            name: "minBookDepth",
-            label: "min book depth (USD)",
-            step: "10",
-            min: "0",
-            defaultValue: "200",
-          },
-          {
-            kind: "number",
-            name: "rangeMaxSpread",
-            label: "max spread (range)",
+            name: "maxSpread",
+            label: "max spread (execution)",
             step: "0.01",
             min: "0",
             max: "1",
@@ -389,41 +429,19 @@ export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDef
           },
           {
             kind: "number",
-            name: "minTimeToExpiryMinutes",
-            label: "min time to expiry (minutes)",
-            step: "60",
+            name: "minTopLevelSize",
+            label: "min top level size",
+            step: "1",
             min: "0",
-            defaultValue: "4320",
-          },
-        ],
-      },
-      {
-        key: "range-runtime",
-        title: "扫描与刷新参数",
-        fields: [
-          {
-            kind: "number",
-            name: "quoteRefreshSeconds",
-            label: "quote refresh (seconds)",
-            step: "5",
-            min: "1",
-            defaultValue: "60",
+            defaultValue: "0",
           },
           {
             kind: "number",
-            name: "staleQuoteSeconds",
-            label: "stale quote (seconds)",
-            step: "10",
-            min: "1",
-            defaultValue: "300",
-          },
-          {
-            kind: "number",
-            name: "scanIntervalSeconds",
-            label: "scan interval (seconds)",
-            step: "10",
-            min: "1",
-            defaultValue: "300",
+            name: "maxQuoteAgeMs",
+            label: "max quote age (ms)",
+            step: "100",
+            min: "100",
+            defaultValue: "5000",
           },
         ],
       },
@@ -458,9 +476,19 @@ export const strategyFormDefinitions: Record<StrategyTypeOption, StrategyFormDef
   },
 };
 
-export function getStrategyFormDefaults(type: StrategyTypeOption) {
-  const sections = [...commonStrategySections, ...strategyFormDefinitions[type].sections];
-  const defaults: Record<string, string | boolean> = { type };
+export function getStrategyFormDefaults(type: StrategyTypeOption, scopeType?: StrategyScopeTypeOption) {
+  const definition = strategyFormDefinitions[type];
+  const resolvedScope = scopeType ?? definition.supportedScopes[0];
+  const scopeDefinition = definition.scopeDefinitions[resolvedScope];
+  const sections = [
+    ...commonStrategySections,
+    ...(scopeDefinition?.sections ?? []),
+    ...definition.triggerSections,
+  ];
+  const defaults: Record<string, string | boolean> = {
+    type,
+    scopeType: resolvedScope,
+  };
 
   for (const section of sections) {
     for (const field of section.fields) {

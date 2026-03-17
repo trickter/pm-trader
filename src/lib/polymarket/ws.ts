@@ -15,6 +15,7 @@ import {
   type MarketWsMessage,
   userWsMessageSchema,
 } from "@/lib/polymarket/types";
+import { getStaticTarget } from "@/lib/strategy/config";
 import {
   defaultTradingHealthSnapshot,
   type TradingHealthSnapshot,
@@ -526,7 +527,7 @@ class PolymarketStreamSupervisor {
     const [strategies, liveOrders] = await Promise.all([
       db.strategy.findMany({
         where: { enabled: true },
-        select: { marketId: true, tokenId: true, type: true },
+        select: { marketId: true, tokenId: true, type: true, scopeType: true, scopeParams: true },
       }),
       db.order.findMany({
         where: {
@@ -542,9 +543,13 @@ class PolymarketStreamSupervisor {
     const marketIds = new Set<string>();
 
     for (const strategy of strategies) {
-      marketIds.add(strategy.marketId);
-      if (strategy.tokenId && strategy.tokenId !== "auto") {
-        nextTokenIds.add(strategy.tokenId);
+      const target = getStaticTarget(strategy);
+      if (!target) {
+        continue;
+      }
+      marketIds.add(target.marketId);
+      if (target.tokenId && target.tokenId !== "auto") {
+        nextTokenIds.add(target.tokenId);
       }
     }
 

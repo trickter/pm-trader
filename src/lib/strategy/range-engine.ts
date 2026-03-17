@@ -8,11 +8,14 @@ import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
 import { placeLimitOrder, cancelOrder } from "@/lib/polymarket/clob-trading";
 import { getPositions } from "@/lib/polymarket/data";
 import { assertRiskBeforeOrder, audit } from "@/lib/risk/engine";
+import { getDiscoveryScope, getStaticTarget } from "@/lib/strategy/config";
 import { twoSidedRangeQuotingParamsSchema, type TwoSidedRangeQuotingParams } from "@/lib/strategy/types";
 import { evaluateRangeEntry, evaluateRangeExit } from "@/lib/strategy/rules/range-quoting";
 import { scanMarketsForRangeQuoting, saveMarketSuitabilitySnapshots } from "@/lib/strategy/market-scanner";
 import { assertFreshMarketData } from "@/lib/trading/readiness";
 import { hashSignal } from "@/lib/utils";
+
+const DEFAULT_STALE_ORDER_SECONDS = 300;
 
 function jsonToInputValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -90,6 +93,23 @@ async function processTokenSide(
   const topBid = quote.book?.bids[0];
   const topAsk = quote.book?.asks[0];
 
+  if (params.maxQuoteAgeMs > 0 && Date.now() - quote.lastUpdatedAt.getTime() > params.maxQuoteAgeMs) {
+    logger.info(`range-engine: skipping stale quote for ${tokenLabel}`, {
+      tokenId,
+      quoteAgeMs: Date.now() - quote.lastUpdatedAt.getTime(),
+      maxQuoteAgeMs: params.maxQuoteAgeMs,
+    });
+    return null;
+  }
+
+  if (params.minTopLevelSize > 0) {
+    const topBidSize = Number(topBid?.size ?? 0);
+    const topAskSize = Number(topAsk?.size ?? 0);
+    if (topBidSize < params.minTopLevelSize || topAskSize < params.minTopLevelSize) {
+      return null;
+    }
+  }
+
   const traderAddress = env.POLYMARKET_TRADER_ADDRESS || undefined;
   const currentInventory = await getTokenInventory(tokenId, traderAddress);
 
@@ -153,7 +173,7 @@ async function processTokenSide(
   }
 
   // --- Phase 3: Cancel stale orders ---
-  await cancelStaleOrders(strategy.id, tokenId, params.staleQuoteSeconds);
+  await cancelStaleOrders(strategy.id, tokenId, DEFAULT_STALE_ORDER_SECONDS);
 
   return null;
 }
@@ -406,7 +426,8 @@ function parseTokenIds(clobTokenIds: string | null | undefined): {
  *
  * Execution flow:
  * 1. Parse and validate strategy parameters
- * 2. If strategy has a specific marketId/tokenId → process that token directly
+ * 2. STATIC_MARKET → process the configured market directly
+ * 3. DISCOVERY_QUERY → scan qualified markets, pick the best candidate, then execute
  * 3. For each token side (YES/NO), evaluate entry and exit conditions
  * 4. Place/cancel orders as needed
  * 5. Record all activity in StrategyRun, Signal, Order, and AuditLog
@@ -434,6 +455,8 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
   }
 
   const params = twoSidedRangeQuotingParamsSchema.parse(strategy.triggerParams);
+  const staticTarget = getStaticTarget(strategy);
+  const discoveryScope = getDiscoveryScope(strategy);
 
   // Check cooldown
   if (strategy.lastTriggeredAt) {
@@ -450,10 +473,44 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
     }
   }
 
-  const market = await getMarketById(strategy.marketId);
+  const executionMarketId =
+    staticTarget?.marketId ??
+    (
+      await (async () => {
+        if (!discoveryScope) {
+          return null;
+        }
+
+        const scanResults = await scanMarketsForRangeQuoting(params, discoveryScope);
+        await saveMarketSuitabilitySnapshots(scanResults, strategy.id);
+        const candidate = scanResults.find((result) => result.qualified);
+
+        if (!candidate) {
+          await db.strategyRun.create({
+            data: {
+              strategyId: strategy.id,
+              status: "no_signal",
+              summary: "No qualified market found for discovery query scope",
+              payload: jsonToInputValue({
+                scanned: scanResults.length,
+              }),
+            },
+          });
+          return null;
+        }
+
+        return candidate.marketId;
+      })()
+    );
+
+  if (!executionMarketId) {
+    return null;
+  }
+
+  const market = await getMarketById(executionMarketId);
   await ensurePolymarketTargetsTracked([
     {
-      marketId: strategy.marketId,
+      marketId: executionMarketId,
       conditionId: market.conditionId ?? undefined,
     },
   ]);
@@ -462,12 +519,12 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
   if (market.endDate) {
     const msRemaining = new Date(market.endDate).getTime() - Date.now();
     const minutesRemaining = msRemaining / 60000;
-    if (minutesRemaining < params.minTimeToExpiryMinutes) {
+    if (discoveryScope && minutesRemaining < discoveryScope.minTimeToExpiryMinutes) {
       await db.strategyRun.create({
         data: {
           strategyId: strategy.id,
           status: "paused",
-          summary: `Market too close to expiry (${Math.round(minutesRemaining)} min remaining, minimum ${params.minTimeToExpiryMinutes})`,
+          summary: `Market too close to expiry (${Math.round(minutesRemaining)} min remaining, minimum ${discoveryScope.minTimeToExpiryMinutes})`,
         },
       });
       await audit("range_risk_pause", "Strategy", strategyId, {
@@ -485,19 +542,43 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
   // Otherwise, try to process both sides.
   const results: Array<{ token: string; label: string; result: unknown }> = [];
 
-  if (strategy.tokenId && strategy.tokenId !== "auto") {
+  if (staticTarget?.tokenId && staticTarget.tokenId !== "auto") {
     // Single token mode: use the specified token
-    const label = yesTokenId === strategy.tokenId ? "YES" : noTokenId === strategy.tokenId ? "NO" : "TOKEN";
-    const result = await processTokenSide(strategy, strategy.tokenId, label, params);
-    results.push({ token: strategy.tokenId, label, result });
+    const label = yesTokenId === staticTarget.tokenId ? "YES" : noTokenId === staticTarget.tokenId ? "NO" : "TOKEN";
+    const result = await processTokenSide(
+      {
+        ...strategy,
+        marketId: executionMarketId,
+      },
+      staticTarget.tokenId,
+      label,
+      params,
+    );
+    results.push({ token: staticTarget.tokenId, label, result });
   } else {
     // Two-sided mode: process YES and NO
     if (yesTokenId) {
-      const result = await processTokenSide(strategy, yesTokenId, "YES", params);
+      const result = await processTokenSide(
+        {
+          ...strategy,
+          marketId: executionMarketId,
+        },
+        yesTokenId,
+        "YES",
+        params,
+      );
       results.push({ token: yesTokenId, label: "YES", result });
     }
     if (noTokenId && params.allowBothSidesInventory) {
-      const result = await processTokenSide(strategy, noTokenId, "NO", params);
+      const result = await processTokenSide(
+        {
+          ...strategy,
+          marketId: executionMarketId,
+        },
+        noTokenId,
+        "NO",
+        params,
+      );
       results.push({ token: noTokenId, label: "NO", result });
     }
   }
@@ -512,6 +593,7 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
         summary: "No entry/exit conditions met for any token side",
         payload: jsonToInputValue({
           marketQuestion: market.question,
+          marketId: executionMarketId,
           tokens: results.map((r) => ({ token: r.token, label: r.label })),
         }),
       },
@@ -534,7 +616,19 @@ export async function runRangeQuotingMarketScan(strategyId: string) {
   }
 
   const params = twoSidedRangeQuotingParamsSchema.parse(strategy.triggerParams);
-  const results = await scanMarketsForRangeQuoting(params);
+  const scope = getDiscoveryScope(strategy);
+  if (!scope) {
+    await db.strategyRun.create({
+      data: {
+        strategyId: strategy.id,
+        status: "scan",
+        summary: "Strategy scope is not DISCOVERY_QUERY; skipping scan",
+      },
+    });
+    return { total: 0, qualified: 0, results: [] };
+  }
+
+  const results = await scanMarketsForRangeQuoting(params, scope);
 
   // Save suitability snapshots
   await saveMarketSuitabilitySnapshots(results, strategyId);
