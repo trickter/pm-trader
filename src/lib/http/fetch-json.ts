@@ -11,6 +11,33 @@ type FetchJsonOptions<TSchema extends z.ZodTypeAny> = {
   retries?: number;
 };
 
+async function fetchViaCurl(url: string, init?: RequestInit) {
+  const [{ execFile }, { promisify }] = await Promise.all([
+    import("node:child_process"),
+    import("node:util"),
+  ]);
+  const execFileAsync = promisify(execFile);
+  const method = init?.method ?? "GET";
+  const headers = Object.entries((init?.headers ?? {}) as Record<string, string>).flatMap(([key, value]) => [
+    "-H",
+    `${key}: ${value}`,
+  ]);
+  const body = typeof init?.body === "string" ? ["--data", init.body] : [];
+  const { stdout } = await execFileAsync("curl", [
+    "-sS",
+    "--fail",
+    "--max-time",
+    "20",
+    "-X",
+    method,
+    ...headers,
+    ...body,
+    url,
+  ]);
+
+  return JSON.parse(stdout);
+}
+
 async function throttleByHost(url: string, minIntervalMs: number) {
   const host = new URL(url).host;
   const now = Date.now();
@@ -43,11 +70,20 @@ export async function fetchJson<TSchema extends z.ZodTypeAny>(
         next: { revalidate: 0 },
       };
 
-      const response = await fetch(url, requestInit);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} for ${url}`);
+      let raw: unknown;
+      try {
+        const response = await fetch(url, requestInit);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} for ${url}`);
+        }
+        raw = await response.json();
+      } catch (fetchError) {
+        logger.warn("fetchJson switching to curl fallback", {
+          url,
+          error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        });
+        raw = await fetchViaCurl(url, requestInit);
       }
-      const raw = await response.json();
 
       return options.schema.parse(raw);
     } catch (error) {

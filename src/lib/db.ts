@@ -5,11 +5,11 @@ declare global {
 }
 
 export const db =
-  global.__pmTraderPrisma ??
+  globalThis.__pmTraderPrisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
 if (process.env.NODE_ENV !== "production") {
-  global.__pmTraderPrisma = db;
+  globalThis.__pmTraderPrisma = db;
 }
