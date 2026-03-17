@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getRiskSettings } from "@/lib/db/settings";
 import { getPositions } from "@/lib/polymarket/data";
+import { assertTradingAllowedForExecution } from "@/lib/trading/readiness";
 
 export async function assertRiskBeforeOrder(input: {
   strategyId: string;
@@ -38,6 +39,10 @@ export async function assertRiskBeforeOrder(input: {
   if (settings.emergencyStop) {
     throw new Error("Global emergency stop is enabled");
   }
+
+  await assertTradingAllowedForExecution({
+    conditionId: input.conditionId,
+  });
 
   if (input.size > settings.maxOrderSize || input.size > Number(strategy.maxOrderSize)) {
     throw new Error("Order size exceeds risk limit");
@@ -89,6 +94,10 @@ export async function assertManualRisk(input: {
   if (settings.emergencyStop) {
     throw new Error("Global emergency stop is enabled");
   }
+
+  await assertTradingAllowedForExecution({
+    conditionId: input.conditionId,
+  });
 
   if (input.size > settings.maxOrderSize) {
     throw new Error("Order size exceeds global risk limit");

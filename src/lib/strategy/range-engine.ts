@@ -4,14 +4,15 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { getMarketById } from "@/lib/polymarket/gamma";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
-import { placeLimitOrder, cancelOrder, listOpenOrders } from "@/lib/polymarket/clob-trading";
+import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
+import { placeLimitOrder, cancelOrder } from "@/lib/polymarket/clob-trading";
 import { getPositions } from "@/lib/polymarket/data";
 import { assertRiskBeforeOrder, audit } from "@/lib/risk/engine";
 import { twoSidedRangeQuotingParamsSchema, type TwoSidedRangeQuotingParams } from "@/lib/strategy/types";
 import { evaluateRangeEntry, evaluateRangeExit } from "@/lib/strategy/rules/range-quoting";
-import { scanMarketsForRangeQuoting, saveMarketSuitabilitySnapshots, type MarketSuitabilityResult } from "@/lib/strategy/market-scanner";
-import { hashSignal, toInputJson } from "@/lib/utils";
+import { scanMarketsForRangeQuoting, saveMarketSuitabilitySnapshots } from "@/lib/strategy/market-scanner";
+import { assertFreshMarketData } from "@/lib/trading/readiness";
+import { hashSignal } from "@/lib/utils";
 
 function jsonToInputValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -68,7 +69,10 @@ async function processTokenSide(
 ): Promise<{ action: string; signal?: unknown } | null> {
   let quote;
   try {
-    quote = await getMarketQuote(tokenId);
+    quote = await assertFreshMarketData({
+      marketId: strategy.marketId,
+      tokenId,
+    });
   } catch (error) {
     logger.error(`range-engine: failed to get quote for ${tokenLabel}`, {
       tokenId,
@@ -83,8 +87,8 @@ async function processTokenSide(
   const midPrice = Number(quote.midpoint);
   const spread = Number(quote.spread);
   const tickSize = Number(market.orderPriceMinTickSize ?? 0.01);
-  const topBid = quote.book.bids[0];
-  const topAsk = quote.book.asks[0];
+  const topBid = quote.book?.bids[0];
+  const topAsk = quote.book?.asks[0];
 
   const traderAddress = env.POLYMARKET_TRADER_ADDRESS || undefined;
   const currentInventory = await getTokenInventory(tokenId, traderAddress);
@@ -413,6 +417,17 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
     return null;
   }
 
+  if (strategy.systemPausedAt) {
+    await db.strategyRun.create({
+      data: {
+        strategyId: strategy.id,
+        status: "paused",
+        summary: strategy.systemPauseReason ?? "Strategy paused by stale data guard",
+      },
+    });
+    return null;
+  }
+
   if (strategy.type !== StrategyType.TWO_SIDED_RANGE_QUOTING) {
     logger.error("range-engine: wrong strategy type", { strategyId, type: strategy.type });
     return null;
@@ -436,6 +451,12 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
   }
 
   const market = await getMarketById(strategy.marketId);
+  await ensurePolymarketTargetsTracked([
+    {
+      marketId: strategy.marketId,
+      conditionId: market.conditionId ?? undefined,
+    },
+  ]);
 
   // Check time to expiry
   if (market.endDate) {

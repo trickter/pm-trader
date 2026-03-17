@@ -5,20 +5,26 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { getDashboardState, getRiskSettings } from "@/lib/db/settings";
 import { discoverMarkets } from "@/lib/polymarket/gamma";
 import { getMarketQuote } from "@/lib/polymarket/clob-public";
+import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
+import { getTradingReadiness } from "@/lib/trading/readiness";
 import { formatDate, formatNumber, truncateHash } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [dashboard, risk, markets] = await Promise.all([
+  const [dashboard, risk, markets, readiness] = await Promise.all([
     getDashboardState(),
     getRiskSettings(),
     discoverMarkets({ active: true, closed: false, limit: 6 }),
+    getTradingReadiness(),
   ]);
 
   const selectedMarket = markets[0];
   const selectedToken = selectedMarket?.clobTokenIds ? JSON.parse(selectedMarket.clobTokenIds)[0] : null;
-  const quote = selectedToken ? await getMarketQuote(selectedToken).catch(() => null) : null;
+  const liveQuote = selectedToken ? getLiveMarketSnapshot(selectedToken) : null;
+  const quote =
+    liveQuote ??
+    (selectedToken ? await getMarketQuote(selectedToken).catch(() => null) : null);
 
   return (
     <ShellPage
@@ -35,11 +41,11 @@ export default async function DashboardPage() {
         <StatCard label="策略总数" value={dashboard.strategiesCount} hint="来源: local DB" />
         <StatCard label="启用策略" value={dashboard.enabledStrategiesCount} hint="来源: local DB" />
         <StatCard label="紧急停止" value={<StatusPill tone={risk.emergencyStop ? "danger" : "good"}>{risk.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="来源: local DB risk settings" />
-        <StatCard label="最近成交数" value={dashboard.latestFills.length} hint="来源: local DB fills" />
+        <StatCard label="交易闸门" value={<StatusPill tone={readiness.ready ? "good" : "danger"}>{readiness.ready ? "READY" : "BLOCKED"}</StatusPill>} hint={readiness.blockReason ?? "market+user freshness"} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
-        <SectionCard title="实时行情" description="来源: Gamma + CLOB。这里只展示选中市场的最新盘口，不混入策略状态。">
+        <SectionCard title="实时行情" description="来源: market WebSocket 主链路；缺失时短时回退 HTTP snapshot。这里只展示选中市场的最新盘口，不混入策略状态。">
           {selectedMarket && quote ? (
             <div className="space-y-5">
               <div>

@@ -140,8 +140,134 @@ export const clobSpreadSchema = z.object({
   spread: z.string(),
 });
 
+export const marketWsBookSchema = z.object({
+  event_type: z.literal("book"),
+  asset_id: z.string(),
+  market: z.string(),
+  bids: z.array(clobBookLevelSchema),
+  asks: z.array(clobBookLevelSchema),
+  hash: z.string().optional(),
+  timestamp: z.string().optional(),
+  min_order_size: z.string().optional(),
+  tick_size: z.string().optional(),
+  neg_risk: z.boolean().optional(),
+  last_trade_price: z.string().optional(),
+});
+
+export const marketWsPriceChangeSchema = z.object({
+  event_type: z.literal("price_change"),
+  market: z.string(),
+  asset_id: z.string(),
+  changes: z.array(
+    z.object({
+      asset_id: z.string(),
+      price: z.string(),
+      size: z.string(),
+      side: z.enum(["BUY", "SELL"]),
+      hash: z.string().optional(),
+      best_bid: z.string().optional(),
+      best_ask: z.string().optional(),
+    }),
+  ),
+  timestamp: z.string().optional(),
+});
+
+export const marketWsTickSizeChangeSchema = z.object({
+  event_type: z.literal("tick_size_change"),
+  asset_id: z.string(),
+  market: z.string(),
+  old_tick_size: z.string(),
+  new_tick_size: z.string(),
+  timestamp: z.string().optional(),
+});
+
+export const marketWsLastTradeSchema = z.object({
+  event_type: z.literal("last_trade_price"),
+  asset_id: z.string(),
+  market: z.string(),
+  price: z.string(),
+  side: z.enum(["BUY", "SELL"]).optional(),
+  size: z.string().optional(),
+  fee_rate_bps: z.string().optional(),
+  timestamp: z.string().optional(),
+});
+
+export const marketWsBestBidAskSchema = z.object({
+  event_type: z.literal("best_bid_ask"),
+  asset_id: z.string(),
+  market: z.string(),
+  best_bid: z.string(),
+  best_ask: z.string(),
+  spread: z.string().optional(),
+  timestamp: z.string().optional(),
+});
+
+export const marketWsResolvedSchema = z.object({
+  event_type: z.literal("market_resolved"),
+  market: z.record(z.string(), z.unknown()),
+  timestamp: z.string().optional(),
+});
+
+export const marketWsMessageSchema = z.union([
+  marketWsBookSchema,
+  marketWsPriceChangeSchema,
+  marketWsTickSizeChangeSchema,
+  marketWsLastTradeSchema,
+  marketWsBestBidAskSchema,
+  marketWsResolvedSchema,
+]);
+
+export const userWsOrderSchema = z.object({
+  event_type: z.literal("order"),
+  id: z.string(),
+  market: z.string(),
+  asset_id: z.string(),
+  side: z.string().optional(),
+  original_size: z.string().optional(),
+  size_matched: z.string().optional(),
+  price: z.string().optional(),
+  status: z.string().optional(),
+  associate_trades: z.array(z.string()).nullable().optional(),
+  outcome: z.string().optional(),
+  order_owner: z.string().optional(),
+});
+
+export const userWsTradeSchema = z.object({
+  event_type: z.literal("trade"),
+  id: z.string(),
+  market: z.string(),
+  asset_id: z.string(),
+  side: z.string().optional(),
+  size: z.string(),
+  price: z.string(),
+  status: z.string().optional(),
+  timestamp: z.string().optional(),
+  last_update: z.string().optional(),
+  taker_order_id: z.string().optional(),
+  trade_owner: z.string().optional(),
+  maker_orders: z
+    .array(
+      z.object({
+        order_id: z.string(),
+        asset_id: z.string(),
+        matched_amount: z.string().optional(),
+        price: z.string().optional(),
+        owner: z.string().optional(),
+        maker_address: z.string().optional(),
+        outcome: z.string().optional(),
+        side: z.string().optional(),
+      }),
+    )
+    .optional(),
+  type: z.string().optional(),
+});
+
+export const userWsMessageSchema = z.union([userWsOrderSchema, userWsTradeSchema]);
+
 export type GammaMarket = z.infer<typeof gammaMarketSchema>;
 export type GammaEvent = z.infer<typeof gammaEventSchema>;
 export type DataTrade = z.infer<typeof dataTradeSchema>;
 export type DataPosition = z.infer<typeof dataPositionSchema>;
 export type ClobOrderBook = z.infer<typeof clobOrderBookSchema>;
+export type MarketWsMessage = z.infer<typeof marketWsMessageSchema>;
+export type UserWsMessage = z.infer<typeof userWsMessageSchema>;

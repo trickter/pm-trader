@@ -5,14 +5,16 @@ import { EmptyState, SectionCard, StatCard, StatusPill, TextInput } from "@/comp
 import { db } from "@/lib/db";
 import { getRiskSettings } from "@/lib/db/settings";
 import { humanConfirmationTodos } from "@/lib/mvp-facts";
+import { getTradingReadiness } from "@/lib/trading/readiness";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function RiskPage() {
-  const [settings, auditLogs] = await Promise.all([
+  const [settings, auditLogs, readiness] = await Promise.all([
     getRiskSettings(),
     db.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 12 }),
+    getTradingReadiness(),
   ]);
 
   return (
@@ -22,6 +24,7 @@ export default async function RiskPage() {
         <StatCard label="per-market max" value={formatNumber(settings.perMarketMaxExposure)} hint="local DB risk" />
         <StatCard label="max order size" value={formatNumber(settings.maxOrderSize)} hint="local DB risk" />
         <StatCard label="kill switch" value={<StatusPill tone={settings.emergencyStop ? "danger" : "good"}>{settings.emergencyStop ? "ON" : "OFF"}</StatusPill>} hint="local DB risk" />
+        <StatCard label="data freshness gate" value={<StatusPill tone={readiness.ready ? "good" : "danger"}>{readiness.ready ? "READY" : "BLOCKED"}</StatusPill>} hint={readiness.blockReason ?? "market+user freshness"} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr,1.15fr]">

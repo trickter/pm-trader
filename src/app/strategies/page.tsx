@@ -194,6 +194,14 @@ export default async function StrategiesPage() {
               <TextInput name="cooldownSeconds" type="number" step="1" defaultValue="30" required />
             </label>
             <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
+              <input type="checkbox" name="pauseOnStaleData" defaultChecked />
+              pause on stale data
+            </label>
+            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
+              <input type="checkbox" name="cancelOpenOrdersOnStaleData" />
+              cancel open orders on stale data
+            </label>
+            <label className="flex items-center gap-2 rounded-2xl border border-[var(--line)] px-4 py-3 text-sm">
               <input type="checkbox" name="dryRun" defaultChecked />
               dry-run
             </label>
@@ -224,8 +232,17 @@ export default async function StrategiesPage() {
                     <div className="flex shrink-0 gap-2">
                       <StatusPill tone={strategy.enabled ? "good" : "warn"}>{strategy.enabled ? "enabled" : "disabled"}</StatusPill>
                       <StatusPill tone={strategy.dryRun ? "warn" : "danger"}>{strategy.dryRun ? "dry-run" : "live"}</StatusPill>
+                      {strategy.systemPausedAt ? <StatusPill tone="danger">system-paused</StatusPill> : null}
                     </div>
                   </div>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    stale guard: {strategy.pauseOnStaleData ? "pause" : "ignore"} / {strategy.cancelOpenOrdersOnStaleData ? "cancel open orders" : "keep orders"}
+                  </p>
+                  {strategy.systemPausedAt ? (
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      paused because {strategy.systemPauseReason ?? "stale data"} at {formatDate(strategy.systemPausedAt)}
+                    </p>
+                  ) : null}
                   {strategy.type === "TWO_SIDED_RANGE_QUOTING" && (
                     <div className="mt-2">
                       <form action={runMarketScanAction} className="inline">

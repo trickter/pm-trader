@@ -4,12 +4,15 @@ import { verifyBearerToken } from "@/lib/auth";
 import { listOpenOrders, listTrades } from "@/lib/polymarket/clob-trading";
 import { getPositions } from "@/lib/polymarket/data";
 import { env } from "@/lib/env";
+import { reconcileTradingState } from "@/lib/polymarket/ws";
 import { audit } from "@/lib/risk/engine";
 
 export async function POST(request: Request) {
   if (!verifyBearerToken(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await reconcileTradingState("manual");
 
   const [openOrders, trades, positions] = await Promise.all([
     listOpenOrders().catch(() => []),

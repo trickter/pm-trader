@@ -11,6 +11,8 @@ import { env } from "@/lib/env";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { listOpenOrders, listTrades, placeLimitOrder, cancelAllOrders } from "@/lib/polymarket/clob-trading";
 import { getPositions, savePositionSnapshots } from "@/lib/polymarket/data";
+import { ensurePolymarketTargetsTracked, reconcileTradingState } from "@/lib/polymarket/ws";
+import { getTradingScope } from "@/lib/polymarket/server-config";
 import { assertManualRisk, audit } from "@/lib/risk/engine";
 import { runStrategyEngineOnce } from "@/lib/strategy/engine";
 import {
@@ -19,6 +21,7 @@ import {
   twoSidedRangeQuotingParamsSchema,
 } from "@/lib/strategy/types";
 import { runRangeQuotingMarketScan } from "@/lib/strategy/range-engine";
+import { assertTradingAllowedForExecution } from "@/lib/trading/readiness";
 
 const strategySchema = z.object({
   name: z.string().min(2),
@@ -29,6 +32,8 @@ const strategySchema = z.object({
   maxOrderSize: z.coerce.number().positive(),
   maxDailyTradeCount: z.coerce.number().int().positive(),
   cooldownSeconds: z.coerce.number().int().nonnegative(),
+  pauseOnStaleData: z.coerce.boolean(),
+  cancelOpenOrdersOnStaleData: z.coerce.boolean(),
   dryRun: z.coerce.boolean(),
   enabled: z.coerce.boolean(),
   // THRESHOLD_BREAKOUT params
@@ -75,6 +80,8 @@ export async function createStrategyAction(formData: FormData) {
     maxOrderSize: formData.get("maxOrderSize"),
     maxDailyTradeCount: formData.get("maxDailyTradeCount"),
     cooldownSeconds: formData.get("cooldownSeconds"),
+    pauseOnStaleData: formData.get("pauseOnStaleData") === "on",
+    cancelOpenOrdersOnStaleData: formData.get("cancelOpenOrdersOnStaleData") === "on",
     dryRun: formData.get("dryRun") === "on",
     enabled: formData.get("enabled") === "on",
     threshold: formData.get("threshold"),
@@ -152,6 +159,8 @@ export async function createStrategyAction(formData: FormData) {
       maxOrderSize: values.maxOrderSize,
       maxDailyTradeCount: values.maxDailyTradeCount,
       cooldownSeconds: values.cooldownSeconds,
+      pauseOnStaleData: values.pauseOnStaleData,
+      cancelOpenOrdersOnStaleData: values.cancelOpenOrdersOnStaleData,
       dryRun: values.dryRun,
       enabled: values.enabled,
     },
@@ -190,8 +199,11 @@ export async function updateRuntimeSettingsAction(formData: FormData) {
   await setRuntimeSettings({
     apiHost: String(formData.get("apiHost") || env.POLYMARKET_CLOB_HOST),
     chainId: Number(formData.get("chainId") || env.POLYMARKET_CHAIN_ID),
-    walletMode: "EOA",
+    walletMode: getTradingScope().walletMode,
+    signatureType: getTradingScope().signatureType as 0 | 2,
     defaultDryRun: formData.get("defaultDryRun") === "on",
+    maxMarketDataStalenessMs: Number(formData.get("maxMarketDataStalenessMs") || 5000),
+    maxUserStateStalenessMs: Number(formData.get("maxUserStateStalenessMs") || 5000),
   });
 
   await audit("runtime_settings_updated", "SystemSetting", undefined, undefined, "operator");
@@ -222,7 +234,20 @@ export async function placeManualOrderAction(formData: FormData) {
   const runtime = await getRuntimeSettings();
   const market = await getMarketById(marketId);
 
+  await ensurePolymarketTargetsTracked([
+    {
+      marketId,
+      tokenId,
+      conditionId: market.conditionId ?? undefined,
+    },
+  ]);
+
   if (!runtime.defaultDryRun) {
+    await assertTradingAllowedForExecution({
+      marketId,
+      tokenId,
+      conditionId: market.conditionId ?? undefined,
+    });
     await assertManualRisk({
       conditionId: market.conditionId ?? marketId,
       size,
@@ -315,6 +340,8 @@ export async function runMarketScanAction(formData: FormData) {
 }
 
 export async function syncTradingViewsAction() {
+  await reconcileTradingState("manual");
+
   const [openOrders, trades, positions] = await Promise.all([
     listOpenOrders().catch(() => []),
     listTrades().catch(() => []),

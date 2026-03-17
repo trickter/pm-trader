@@ -12,9 +12,16 @@ export type GlobalRiskSettings = {
 export type RuntimeSettings = {
   apiHost: string;
   chainId: number;
-  walletMode: "EOA";
+  walletMode: "EOA" | "POLY_GNOSIS_SAFE";
+  signatureType: 0 | 2;
   defaultDryRun: boolean;
+  maxMarketDataStalenessMs: number;
+  maxUserStateStalenessMs: number;
 };
+
+function inferWalletMode(signatureType: number): RuntimeSettings["walletMode"] {
+  return signatureType === 2 ? "POLY_GNOSIS_SAFE" : "EOA";
+}
 
 export const defaultRiskSettings: GlobalRiskSettings = {
   globalMaxExposure: 1000,
@@ -27,8 +34,11 @@ export const defaultRiskSettings: GlobalRiskSettings = {
 export const defaultRuntimeSettings: RuntimeSettings = {
   apiHost: env.POLYMARKET_CLOB_HOST,
   chainId: env.POLYMARKET_CHAIN_ID,
-  walletMode: "EOA",
+  walletMode: inferWalletMode(env.POLYMARKET_SIGNATURE_TYPE),
+  signatureType: env.POLYMARKET_SIGNATURE_TYPE === 2 ? 2 : 0,
   defaultDryRun: env.SYSTEM_DEFAULT_DRY_RUN,
+  maxMarketDataStalenessMs: 5000,
+  maxUserStateStalenessMs: 5000,
 };
 
 async function getSetting<T>(key: string, fallback: T): Promise<T> {
@@ -53,7 +63,15 @@ export async function setRiskSettings(value: GlobalRiskSettings) {
 }
 
 export async function getRuntimeSettings() {
-  return getSetting("runtime", defaultRuntimeSettings);
+  const stored = await getSetting<Partial<RuntimeSettings>>("runtime", defaultRuntimeSettings);
+  const signatureType = stored.signatureType === 2 ? 2 : defaultRuntimeSettings.signatureType;
+
+  return {
+    ...defaultRuntimeSettings,
+    ...stored,
+    signatureType,
+    walletMode: stored.walletMode ?? inferWalletMode(signatureType),
+  } satisfies RuntimeSettings;
 }
 
 export async function setRuntimeSettings(value: RuntimeSettings) {

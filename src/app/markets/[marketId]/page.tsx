@@ -5,6 +5,7 @@ import { CopyableId } from "@/components/ui/display";
 import { EmptyState, SectionCard, TextInput } from "@/components/ui/primitives";
 import { getMarketQuote } from "@/lib/polymarket/clob-public";
 import { getMarketById } from "@/lib/polymarket/gamma";
+import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +19,15 @@ export default async function MarketDetailPage({
   const market = await getMarketById(marketId);
   const tokenIds = market.clobTokenIds ? JSON.parse(market.clobTokenIds) : [];
   const primaryTokenId = tokenIds[0];
-  const quote = primaryTokenId ? await getMarketQuote(primaryTokenId).catch(() => null) : null;
+  const quote =
+    (primaryTokenId ? getLiveMarketSnapshot(primaryTokenId) : null) ??
+    (primaryTokenId ? await getMarketQuote(primaryTokenId).catch(() => null) : null);
 
   return (
     <ShellPage
       eyebrow="Market Detail"
       title={market.question}
-      description="展示官方确认的市场基础字段、outcome / token 映射、盘口与手工下单。实时模块目前通过服务端轮询 route 解耦，WSS market channel 仍保留为后续替换项。"
+      description="展示官方确认的市场基础字段、outcome / token 映射、盘口与手工下单。实时行情优先来自服务端 market WebSocket，缺失时短时回退 HTTP snapshot。"
     >
       <div className="space-y-6">
         <SectionCard title="市场概览" description="来源: Gamma + CLOB">
@@ -78,7 +81,7 @@ export default async function MarketDetailPage({
           </SectionCard>
         </div>
 
-        {quote ? (
+        {quote?.book ? (
           <div className="grid gap-6 xl:grid-cols-2">
             <OrderbookTable title="买盘" levels={quote.book.bids} tone="buy" />
             <OrderbookTable title="卖盘" levels={quote.book.asks} tone="sell" />

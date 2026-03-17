@@ -85,10 +85,14 @@ model Strategy {
   maxOrderSize       Decimal       @db.Decimal(20, 8)
   maxDailyTradeCount Int
   cooldownSeconds    Int
+  pauseOnStaleData   Boolean       @default(true)
+  cancelOpenOrdersOnStaleData Boolean @default(false)
   dryRun             Boolean       @default(true)
   enabled            Boolean       @default(false)
   lastSignalHash     String?
   lastTriggeredAt    DateTime?
+  systemPausedAt     DateTime?
+  systemPauseReason  String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   runs               StrategyRun[]
@@ -150,7 +154,7 @@ model Fill {
   id                String       @id @default(cuid())
   orderId           String?
   order             Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  polymarketTradeId String?
+  polymarketTradeId String?      @unique
   marketId          String
   tokenId           String
   side              StrategySide
@@ -194,6 +198,25 @@ model SystemSetting {
   value     Json
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+}
+
+model SystemHealthState {
+  key                    String   @id
+  marketWsConnected      Boolean  @default(false)
+  userWsConnected        Boolean  @default(false)
+  marketStale            Boolean  @default(true)
+  userStale              Boolean  @default(true)
+  tradingBlocked         Boolean  @default(true)
+  reconciling            Boolean  @default(false)
+  blockReason            String?
+  lastMarketMessageAt    DateTime?
+  lastUserMessageAt      DateTime?
+  lastMarketReconciledAt DateTime?
+  lastUserReconciledAt   DateTime?
+  lastHeartbeatAt        DateTime?
+  details                Json?
+  updatedAt              DateTime @updatedAt
+  createdAt              DateTime @default(now())
 }
 
 model MarketSuitability {

@@ -13,9 +13,10 @@ import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
 
 import { env } from "@/lib/env";
-import { isTradingConfigured } from "@/lib/polymarket/server-config";
+import { getTradingScope, isTradingConfigured } from "@/lib/polymarket/server-config";
 
 let cachedClient: ClobClient | null = null;
+let cachedApiCreds: Awaited<ReturnType<ClobClient["createOrDeriveApiKey"]>> | null = null;
 
 async function createClient() {
   if (!isTradingConfigured()) {
@@ -35,19 +36,27 @@ async function createClient() {
     chain: polygon,
     transport: http(),
   });
+  const tradingScope = getTradingScope();
+  const signatureType =
+    tradingScope.signatureType === 2 ? SignatureType.POLY_GNOSIS_SAFE : SignatureType.EOA;
 
   const creds = await new ClobClient(
     env.POLYMARKET_CLOB_HOST,
     env.POLYMARKET_CHAIN_ID as Chain,
     walletClient,
+    undefined,
+    signatureType,
+    env.POLYMARKET_FUNDER_ADDRESS || undefined,
   ).createOrDeriveApiKey();
+
+  cachedApiCreds = creds;
 
   return new ClobClient(
     env.POLYMARKET_CLOB_HOST,
     env.POLYMARKET_CHAIN_ID as Chain,
     walletClient,
     creds,
-    SignatureType.EOA,
+    signatureType,
     env.POLYMARKET_FUNDER_ADDRESS || undefined,
     undefined,
     false,
@@ -64,6 +73,19 @@ async function getClient() {
     cachedClient = await createClient();
   }
   return cachedClient;
+}
+
+export async function getOrCreateApiCredentials() {
+  if (cachedApiCreds) {
+    return cachedApiCreds;
+  }
+
+  await getClient();
+  if (!cachedApiCreds) {
+    throw new Error("Unable to derive Polymarket API credentials");
+  }
+
+  return cachedApiCreds;
 }
 
 export async function placeLimitOrder(input: {

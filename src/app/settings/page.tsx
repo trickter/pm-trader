@@ -7,18 +7,20 @@ import { getRuntimeSettings } from "@/lib/db/settings";
 import { env } from "@/lib/env";
 import { humanConfirmationTodos, polymarketFacts } from "@/lib/mvp-facts";
 import { getTradingScope, isTradingConfigured } from "@/lib/polymarket/server-config";
+import { getTradingReadiness } from "@/lib/trading/readiness";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [runtime, auditLogs] = await Promise.all([
+  const [runtime, auditLogs, readiness] = await Promise.all([
     getRuntimeSettings(),
     db.auditLog.findMany({
       where: { entityType: "SystemSetting" },
       orderBy: { createdAt: "desc" },
       take: 12,
     }),
+    getTradingReadiness(),
   ]);
 
   const tradingScope = getTradingScope();
@@ -28,7 +30,7 @@ export default async function SettingsPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="api host" value={runtime.apiHost} hint="from env var (read-only)" />
         <StatCard label="chain id" value={runtime.chainId} hint="from env var (read-only)" />
-        <StatCard label="wallet mode" value={runtime.walletMode} hint="MVP 只支持 EOA" />
+        <StatCard label="wallet mode" value={runtime.walletMode} hint="from env signature type (read-only)" />
         <StatCard label="trading creds" value={<StatusPill tone={isTradingConfigured() ? "good" : "warn"}>{isTradingConfigured() ? "configured" : "missing"}</StatusPill>} hint="server env only" />
       </div>
 
@@ -49,6 +51,14 @@ export default async function SettingsPage() {
               <input type="checkbox" name="defaultDryRun" defaultChecked={runtime.defaultDryRun} />
               default dry-run
             </label>
+            <label className="text-sm">
+              <span className="mb-2 block text-[var(--muted)]">max market data staleness (ms)</span>
+              <TextInput name="maxMarketDataStalenessMs" type="number" step="100" defaultValue={runtime.maxMarketDataStalenessMs} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-2 block text-[var(--muted)]">max user state staleness (ms)</span>
+              <TextInput name="maxUserStateStalenessMs" type="number" step="100" defaultValue={runtime.maxUserStateStalenessMs} />
+            </label>
             <div>
               <SubmitButton pendingLabel="保存中...">保存设置</SubmitButton>
             </div>
@@ -58,9 +68,9 @@ export default async function SettingsPage() {
         <SectionCard title="密钥边界与适用范围" description="来源: server env + official auth scope">
           <div className="space-y-3 text-sm">
             <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
-              <p className="font-medium">EOA only</p>
+              <p className="font-medium">signature mode</p>
               <p className="mt-2 text-[var(--muted)]">
-                这版只实现官方已确认的 EOA 签名类型，当前配置值: signatureType {tradingScope.signatureType}, chainId {tradingScope.chainId}。
+                当前支持官方已确认的 `EOA(0)` 与 `POLY_GNOSIS_SAFE(2)`。当前配置值: signatureType {tradingScope.signatureType}, walletMode {tradingScope.walletMode}, chainId {tradingScope.chainId}。
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
@@ -75,6 +85,32 @@ export default async function SettingsPage() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <SectionCard title="交易主链路健康" description="WebSocket 主链路 + reconcile gate">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
+              <p className="font-medium">market data</p>
+              <p className="mt-2">
+                <StatusPill tone={readiness.marketFresh ? "good" : "danger"}>{readiness.marketFresh ? "fresh" : "stale"}</StatusPill>
+              </p>
+              <p className="mt-2 text-[var(--muted)]">threshold: {runtime.maxMarketDataStalenessMs}ms</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
+              <p className="font-medium">user state</p>
+              <p className="mt-2">
+                <StatusPill tone={readiness.userFresh ? "good" : "danger"}>{readiness.userFresh ? "fresh" : "stale"}</StatusPill>
+              </p>
+              <p className="mt-2 text-[var(--muted)]">threshold: {runtime.maxUserStateStalenessMs}ms</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3 md:col-span-2">
+              <p className="font-medium">trading readiness</p>
+              <p className="mt-2">
+                <StatusPill tone={readiness.ready ? "good" : "danger"}>{readiness.ready ? "ready" : "blocked"}</StatusPill>
+              </p>
+              <p className="mt-2 text-[var(--muted)]">reason: {readiness.blockReason ?? "none"}</p>
+            </div>
+          </div>
+        </SectionCard>
+
         <SectionCard title="事实清单" description="只列这版确实采用或显式保留 TODO 的官方能力。">
           <div className="space-y-3 text-sm">
             {polymarketFacts.map((fact) => (

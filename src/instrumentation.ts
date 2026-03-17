@@ -1,4 +1,5 @@
 import { startStrategyLoop } from "@/lib/strategy/engine";
+import { startPolymarketStreams } from "@/lib/polymarket/ws";
 
 let registered = false;
 
@@ -11,6 +12,7 @@ export async function register() {
   registered = true;
 
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    startPolymarketStreams();
     startStrategyLoop();
   }
 }

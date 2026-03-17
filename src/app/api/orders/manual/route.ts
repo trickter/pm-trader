@@ -8,7 +8,9 @@ import { getRuntimeSettings } from "@/lib/db/settings";
 import { env } from "@/lib/env";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
+import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
 import { assertManualRisk, audit } from "@/lib/risk/engine";
+import { assertTradingAllowedForExecution } from "@/lib/trading/readiness";
 
 const bodySchema = z.object({
   marketId: z.string().min(1),
@@ -33,7 +35,20 @@ export async function POST(request: Request) {
   const runtime = await getRuntimeSettings();
   const market = await getMarketById(marketId);
 
+  await ensurePolymarketTargetsTracked([
+    {
+      marketId,
+      tokenId,
+      conditionId: market.conditionId ?? undefined,
+    },
+  ]);
+
   if (!runtime.defaultDryRun) {
+    await assertTradingAllowedForExecution({
+      marketId,
+      tokenId,
+      conditionId: market.conditionId ?? undefined,
+    });
     await assertManualRisk({
       conditionId: market.conditionId ?? marketId,
       size,

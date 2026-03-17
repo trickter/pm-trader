@@ -4,13 +4,14 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { getMarketById } from "@/lib/polymarket/gamma";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
+import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
 import { evaluateOrderbookImbalance } from "@/lib/strategy/rules/spread-imbalance";
 import { evaluateThresholdBreakout } from "@/lib/strategy/rules/threshold-breakout";
 import { executeRangeQuotingStrategy } from "@/lib/strategy/range-engine";
 import { hashSignal } from "@/lib/utils";
 import { assertRiskBeforeOrder, audit } from "@/lib/risk/engine";
+import { assertFreshMarketData } from "@/lib/trading/readiness";
 
 let loopStarted = false;
 let engineRunning = false;
@@ -25,14 +26,30 @@ async function executeStrategy(strategyId: string) {
     return null;
   }
 
+  if (strategy.systemPausedAt) {
+    await db.strategyRun.create({
+      data: {
+        strategyId: strategy.id,
+        status: "paused",
+        summary: strategy.systemPauseReason ?? "Strategy paused by stale data guard",
+      },
+    });
+    return null;
+  }
+
   // Dispatch TWO_SIDED_RANGE_QUOTING to its dedicated engine
   if (strategy.type === StrategyType.TWO_SIDED_RANGE_QUOTING) {
     return executeRangeQuotingStrategy(strategyId);
   }
 
-  const [market, quote] = await Promise.all([getMarketById(strategy.marketId), getMarketQuote(strategy.tokenId)]);
-  const topBid = quote.book.bids[0];
-  const topAsk = quote.book.asks[0];
+  const market = await getMarketById(strategy.marketId);
+  const quote = await assertFreshMarketData({
+    marketId: strategy.marketId,
+    tokenId: strategy.tokenId,
+    conditionId: market.conditionId ?? undefined,
+  });
+  const topBid = quote.book?.bids[0];
+  const topAsk = quote.book?.asks[0];
   const observedPrice = Number(strategy.side === StrategySide.BUY ? quote.bestAsk : quote.bestBid);
   const observedSpread = Number(quote.spread);
 
@@ -218,6 +235,13 @@ export async function runStrategyEngineOnce() {
       where: { enabled: true },
       orderBy: { updatedAt: "desc" },
     });
+
+    await ensurePolymarketTargetsTracked(
+      strategies.map((strategy) => ({
+        marketId: strategy.marketId,
+        tokenId: strategy.tokenId === "auto" ? undefined : strategy.tokenId,
+      })),
+    );
 
     const results = [];
     for (const strategy of strategies) {
