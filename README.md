@@ -43,6 +43,8 @@ Notes:
 
 - Compose starts both the app and PostgreSQL.
 - If `.env` is missing, built-in defaults are used so the project can still boot.
+- `docker compose` uses the internal database host `db`. If your `.env` contains `DATABASE_URL=...localhost...`, that is only for non-Docker local runs and will not be used by Compose.
+- If you want to override the database URL for Docker, set `DOCKER_DATABASE_URL`, not `DATABASE_URL`.
 - The default admin token is `change-me-before-production`. Override it before exposing the app anywhere.
 
 ## Optional Live Trading Env

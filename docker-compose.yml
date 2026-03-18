@@ -7,7 +7,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/pm_trader?schema=public}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://postgres:postgres@db:5432/pm_trader?schema=public}
       POLYMARKET_GAMMA_HOST: ${POLYMARKET_GAMMA_HOST:-https://gamma-api.polymarket.com}
       POLYMARKET_DATA_HOST: ${POLYMARKET_DATA_HOST:-https://data-api.polymarket.com}
       POLYMARKET_CLOB_HOST: ${POLYMARKET_CLOB_HOST:-https://clob.polymarket.com}
