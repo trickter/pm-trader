@@ -33,6 +33,18 @@ Polymarket strategy trading system MVP built with Next.js App Router + TypeScrip
 5. Run `npm run prisma:push`.
 6. Run `npm run dev`.
 
+## Docker Compose Run
+
+1. Optional: copy `.env.example` to `.env` and fill in real secrets if needed.
+2. Run `docker compose up --build`.
+3. Open `http://localhost:3000`.
+
+Notes:
+
+- Compose starts both the app and PostgreSQL.
+- If `.env` is missing, built-in defaults are used so the project can still boot.
+- The default admin token is `change-me-before-production`. Override it before exposing the app anywhere.
+
 ## Optional Live Trading Env
 
 Set these server-only variables before using live CLOB order submission:
