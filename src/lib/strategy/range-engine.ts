@@ -112,6 +112,8 @@ async function processTokenSide(
 
   const traderAddress = env.POLYMARKET_TRADER_ADDRESS || undefined;
   const currentInventory = await getTokenInventory(tokenId, traderAddress);
+  const marketDataLastUpdatedAt = quote.lastUpdatedAt;
+  const marketDataSource = quote.source;
 
   // --- Phase 1: Check entry signal ---
   const entrySignal = evaluateRangeEntry({
@@ -137,6 +139,10 @@ async function processTokenSide(
         entrySignal,
         params,
         market,
+        {
+          marketDataLastUpdatedAt,
+          marketDataSource,
+        },
         "RANGE_ENTRY",
         StrategySide.BUY,
       );
@@ -166,6 +172,10 @@ async function processTokenSide(
         exitSignal,
         params,
         market,
+        {
+          marketDataLastUpdatedAt,
+          marketDataSource,
+        },
         "RANGE_EXIT",
         StrategySide.SELL,
       );
@@ -195,6 +205,10 @@ async function placeRangeOrder(
   signalCandidate: NonNullable<ReturnType<typeof evaluateRangeEntry>>,
   params: TwoSidedRangeQuotingParams,
   market: Awaited<ReturnType<typeof getMarketById>>,
+  marketDataTiming: {
+    marketDataLastUpdatedAt: Date;
+    marketDataSource: "ws" | "http";
+  },
   signalType: "RANGE_ENTRY" | "RANGE_EXIT",
   side: StrategySide,
 ) {
@@ -266,6 +280,10 @@ async function placeRangeOrder(
 
   // Live execution
   try {
+    const submitStartedAtMs = Date.now();
+    const marketDataLastUpdatedAtMs = marketDataTiming.marketDataLastUpdatedAt.getTime();
+    const marketDataAgeMsAtSubmitStart = submitStartedAtMs - marketDataLastUpdatedAtMs;
+
     await assertRiskBeforeOrder({
       strategyId: strategy.id,
       conditionId: market.conditionId ?? strategy.marketId,
@@ -282,6 +300,16 @@ async function placeRangeOrder(
       tickSize: String(market.orderPriceMinTickSize ?? "0.01") as "0.1" | "0.01" | "0.001" | "0.0001",
       negRisk: Boolean(market.negRisk),
     });
+    const submitCompletedAtMs = Date.now();
+    const orderSubmissionTiming = {
+      marketDataSource: marketDataTiming.marketDataSource,
+      marketDataLastUpdatedAt: marketDataTiming.marketDataLastUpdatedAt.toISOString(),
+      submitStartedAt: new Date(submitStartedAtMs).toISOString(),
+      submitCompletedAt: new Date(submitCompletedAtMs).toISOString(),
+      marketDataAgeMsAtSubmitStart,
+      marketDataToSubmitCompletedMs: submitCompletedAtMs - marketDataLastUpdatedAtMs,
+      submitRoundTripMs: submitCompletedAtMs - submitStartedAtMs,
+    };
 
     await db.order.create({
       data: {
@@ -296,8 +324,20 @@ async function placeRangeOrder(
         status: response.success ? "SUBMITTED" : "REJECTED",
         dryRun: false,
         source: "CLOB",
-        rawRequest: jsonToInputValue({ strategyId: strategy.id, price, size, tokenLabel }),
-        rawResponse: jsonToInputValue(response),
+        rawRequest: jsonToInputValue({
+          strategyId: strategy.id,
+          price,
+          size,
+          tokenLabel,
+          orderSubmissionTiming,
+        }),
+        rawResponse: jsonToInputValue({
+          ...response,
+          orderSubmissionTiming: {
+            ...orderSubmissionTiming,
+            orderPersistedAt: new Date().toISOString(),
+          },
+        }),
         errorMessage: response.success ? null : response.errorMsg ?? "Unknown rejection",
       },
     });
@@ -323,10 +363,19 @@ async function placeRangeOrder(
       side,
       price,
       size,
+      orderSubmissionTiming,
     }, "range-engine");
 
     return { action: `${signalType} order submitted`, signal };
   } catch (error) {
+    const failureCapturedAtMs = Date.now();
+    const orderSubmissionTiming = {
+      marketDataSource: marketDataTiming.marketDataSource,
+      marketDataLastUpdatedAt: marketDataTiming.marketDataLastUpdatedAt.toISOString(),
+      failureCapturedAt: new Date(failureCapturedAtMs).toISOString(),
+      marketDataToFailureMs: failureCapturedAtMs - marketDataTiming.marketDataLastUpdatedAt.getTime(),
+    };
+
     await db.order.create({
       data: {
         strategyId: strategy.id,
@@ -339,6 +388,13 @@ async function placeRangeOrder(
         status: "REJECTED",
         dryRun: false,
         source: "local risk",
+        rawRequest: jsonToInputValue({
+          strategyId: strategy.id,
+          price,
+          size,
+          tokenLabel,
+          orderSubmissionTiming,
+        }),
         errorMessage: error instanceof Error ? error.message : "Unknown execution failure",
       },
     });
@@ -347,6 +403,7 @@ async function placeRangeOrder(
       error: error instanceof Error ? error.message : String(error),
       signalType,
       tokenLabel,
+      orderSubmissionTiming,
     }, "range-engine");
 
     return { action: `${signalType} rejected: ${error instanceof Error ? error.message : "unknown"}`, signal };
