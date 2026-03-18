@@ -2,6 +2,7 @@ import { placeManualOrderAction } from "@/app/actions";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { MarketDetailBlock, MarketStats, OrderbookTable, OutcomeList, ShellPage } from "@/components/market-pages";
 import { CopyableId } from "@/components/ui/display";
+import Link from "next/link";
 import { EmptyState, SectionCard, StatusPill, TextInput } from "@/components/ui/primitives";
 import { getRuntimeSettings } from "@/lib/db/settings";
 import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
@@ -36,7 +37,7 @@ export default async function MarketDetailPage({
       description="展示官方确认的市场基础字段、outcome / token 映射、盘口与手工下单。实时行情优先来自服务端 market WebSocket，缺失时短时回退 HTTP snapshot。"
     >
       <div className="space-y-6">
-        {orderStatus ? <ManualOrderFeedback status={orderStatus} detail={orderDetail} /> : null}
+        {orderStatus ? <ManualOrderFeedback marketId={market.id} status={orderStatus} detail={orderDetail} /> : null}
 
         <SectionCard title="市场概览" description="来源: Gamma + CLOB">
           <MarketStats market={market} quote={quote ?? undefined} />
@@ -119,9 +120,11 @@ function getSingleSearchParam(value: string | string[] | undefined) {
 }
 
 function ManualOrderFeedback({
+  marketId,
   status,
   detail,
 }: {
+  marketId: string;
   status: string;
   detail?: string;
 }) {
@@ -142,11 +145,25 @@ function ManualOrderFeedback({
           : `下单失败: ${detail ?? "Unknown error"}`;
 
   return (
-    <SectionCard title="手工下单结果" description="来源: 本次提交结果">
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <StatusPill tone={tone}>{status}</StatusPill>
-        <p className="text-[var(--muted)]">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+      <div className="w-full max-w-lg rounded-[28px] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">Manual Order</p>
+            <h3 className="mt-2 text-xl font-semibold">手工下单结果</h3>
+          </div>
+          <StatusPill tone={tone}>{status}</StatusPill>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-[var(--muted)]">{message}</p>
+        <div className="mt-6 flex justify-end">
+          <Link
+            href={`/markets/${marketId}`}
+            className="rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            关闭
+          </Link>
+        </div>
       </div>
-    </SectionCard>
+    </div>
   );
 }

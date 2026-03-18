@@ -691,9 +691,11 @@ class PolymarketStreamSupervisor {
     });
 
     socket.addEventListener("close", () => {
-      if (this.marketSocket === socket) {
-        this.marketSocket = null;
+      if (this.marketSocket !== socket) {
+        return;
       }
+
+      this.marketSocket = null;
 
       void this.patchHealth({
         marketWsConnected: false,
@@ -704,14 +706,15 @@ class PolymarketStreamSupervisor {
       this.scheduleMarketReconnect();
     });
 
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (error) => {
       if (this.marketSocket !== socket) {
         return;
       }
 
-      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
+      logger.warn("ws: market socket error", {
+        readyState: socket.readyState,
+        error: error instanceof Error ? error.message : "market socket error",
+      });
     });
   }
 
@@ -763,9 +766,11 @@ class PolymarketStreamSupervisor {
     });
 
     socket.addEventListener("close", () => {
-      if (this.userSocket === socket) {
-        this.userSocket = null;
+      if (this.userSocket !== socket) {
+        return;
       }
+
+      this.userSocket = null;
 
       void this.patchHealth({
         userWsConnected: false,
@@ -776,14 +781,15 @@ class PolymarketStreamSupervisor {
       this.scheduleUserReconnect();
     });
 
-    socket.addEventListener("error", () => {
+    socket.addEventListener("error", (error) => {
       if (this.userSocket !== socket) {
         return;
       }
 
-      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
+      logger.warn("ws: user socket error", {
+        readyState: socket.readyState,
+        error: error instanceof Error ? error.message : "user socket error",
+      });
     });
   }
 
