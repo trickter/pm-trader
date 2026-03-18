@@ -589,6 +589,7 @@ class PolymarketStreamSupervisor {
   private async replaceTrackedTargets(nextTokenIds: Set<string>, nextConditionIds: Set<string>) {
     const tokensChanged = !compareStringSets(this.trackedTokenIds, nextTokenIds);
     const conditionsChanged = !compareStringSets(this.trackedConditionIds, nextConditionIds);
+    const addedTokenIds = Array.from(nextTokenIds).filter((tokenId) => !this.trackedTokenIds.has(tokenId));
 
     if (!tokensChanged && !conditionsChanged) {
       return;
@@ -609,13 +610,13 @@ class PolymarketStreamSupervisor {
     if (nextTokenIds.size > 0 && (!this.marketSocket || this.marketSocket.readyState > WebSocket.OPEN)) {
       this.connectMarketSocket();
     } else if (tokensChanged && this.marketSocket?.readyState === WebSocket.OPEN) {
-      this.sendMarketSubscription();
+      this.sendMarketSubscription(addedTokenIds);
     }
 
     if (nextConditionIds.size > 0 && (!this.userSocket || this.userSocket.readyState > WebSocket.OPEN)) {
       this.connectUserSocket();
     } else if (conditionsChanged && this.userSocket?.readyState === WebSocket.OPEN) {
-      void this.sendUserSubscription();
+      this.userSocket.close();
     }
   }
 
@@ -801,15 +802,20 @@ class PolymarketStreamSupervisor {
     });
   }
 
-  private sendMarketSubscription() {
-    if (!this.marketSocket || this.marketSocket.readyState !== WebSocket.OPEN || this.trackedTokenIds.size === 0) {
+  private sendMarketSubscription(tokenIds?: string[]) {
+    if (!this.marketSocket || this.marketSocket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const assetIds = tokenIds ?? Array.from(this.trackedTokenIds);
+    if (assetIds.length === 0) {
       return;
     }
 
     this.marketSocket.send(
       JSON.stringify({
-        assets: Array.from(this.trackedTokenIds),
-        type: "market",
+        assets_ids: assetIds,
+        ...(tokenIds ? { operation: "subscribe" } : { type: "market" }),
         custom_feature_enabled: true,
       }),
     );
