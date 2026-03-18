@@ -290,6 +290,7 @@ async function placeRangeOrder(
       conditionId: market.conditionId ?? strategy.marketId,
       size,
       signalHash,
+      signalId: signal.id,
       traderAddress: env.POLYMARKET_TRADER_ADDRESS || undefined,
     });
 

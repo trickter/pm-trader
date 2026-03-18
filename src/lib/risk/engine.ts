@@ -10,6 +10,7 @@ export async function assertRiskBeforeOrder(input: {
   conditionId: string;
   size: number;
   signalHash: string;
+  signalId?: string;
   traderAddress?: string;
 }) {
   const [settings, strategy, dailyOrderCount, duplicateSignal, positions] = await Promise.all([
@@ -30,6 +31,7 @@ export async function assertRiskBeforeOrder(input: {
       where: {
         strategyId: input.strategyId,
         signalHash: input.signalHash,
+        id: input.signalId ? { not: input.signalId } : undefined,
       },
       orderBy: { createdAt: "desc" },
     }),

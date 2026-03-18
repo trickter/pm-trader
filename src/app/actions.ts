@@ -207,6 +207,76 @@ export async function createStrategyAction(formData: FormData) {
   revalidatePath("/strategies");
 }
 
+export async function toggleStrategyEnabledAction(formData: FormData) {
+  if (!(await verifyAdminToken())) {
+    throw new Error("Unauthorized");
+  }
+
+  const strategyId = String(formData.get("strategyId") || "");
+  const enabled = String(formData.get("enabled") || "") === "true";
+
+  if (!strategyId) {
+    throw new Error("Missing strategyId");
+  }
+
+  const strategy = await db.strategy.update({
+    where: { id: strategyId },
+    data: { enabled },
+    select: {
+      id: true,
+      name: true,
+      enabled: true,
+    },
+  });
+
+  await audit(
+    enabled ? "strategy_enabled" : "strategy_disabled",
+    "Strategy",
+    strategy.id,
+    {
+      name: strategy.name,
+      enabled: strategy.enabled,
+    },
+    "operator",
+  );
+
+  revalidatePath("/strategies");
+}
+
+export async function deleteStrategyAction(formData: FormData) {
+  if (!(await verifyAdminToken())) {
+    throw new Error("Unauthorized");
+  }
+
+  const strategyId = String(formData.get("strategyId") || "");
+
+  if (!strategyId) {
+    throw new Error("Missing strategyId");
+  }
+
+  const strategy = await db.strategy.delete({
+    where: { id: strategyId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+    },
+  });
+
+  await audit(
+    "strategy_deleted",
+    "Strategy",
+    strategy.id,
+    {
+      name: strategy.name,
+      type: strategy.type,
+    },
+    "operator",
+  );
+
+  revalidatePath("/strategies");
+}
+
 export async function updateRiskSettingsAction(formData: FormData) {
   if (!(await verifyAdminToken())) {
     throw new Error("Unauthorized");

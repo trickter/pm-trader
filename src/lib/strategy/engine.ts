@@ -157,6 +157,7 @@ async function executeStrategy(strategyId: string) {
       conditionId: market.conditionId ?? target.marketId,
       size: Number(strategy.maxOrderSize),
       signalHash,
+      signalId: signal.id,
       traderAddress: env.POLYMARKET_TRADER_ADDRESS || undefined,
     });
 

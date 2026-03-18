@@ -1,4 +1,11 @@
-import { createStrategyAction, runEngineNowAction, runMarketScanAction } from "@/app/actions";
+import {
+  createStrategyAction,
+  deleteStrategyAction,
+  runEngineNowAction,
+  runMarketScanAction,
+  toggleStrategyEnabledAction,
+} from "@/app/actions";
+import { ConfirmSubmitButton } from "@/components/forms/confirm-submit-button";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";
 import { StrategyForm } from "@/components/strategies/strategy-form";
@@ -84,6 +91,25 @@ export default async function StrategiesPage() {
                       paused because {strategy.systemPauseReason ?? "stale data"} at {formatDate(strategy.systemPausedAt)}
                     </p>
                   ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <form action={toggleStrategyEnabledAction} className="inline">
+                      <input type="hidden" name="strategyId" value={strategy.id} />
+                      <input type="hidden" name="enabled" value={strategy.enabled ? "false" : "true"} />
+                      <SubmitButton pendingLabel={strategy.enabled ? "暂停中..." : "恢复中..."} tone="ghost">
+                        {strategy.enabled ? "暂停策略" : "恢复策略"}
+                      </SubmitButton>
+                    </form>
+                    <form action={deleteStrategyAction} className="inline">
+                      <input type="hidden" name="strategyId" value={strategy.id} />
+                      <ConfirmSubmitButton
+                        pendingLabel="删除中..."
+                        tone="danger"
+                        confirmMessage="确认删除该策略？历史订单会保留，但运行记录和信号会一起删除。"
+                      >
+                        删除策略
+                      </ConfirmSubmitButton>
+                    </form>
+                  </div>
                   {strategy.type === "TWO_SIDED_RANGE_QUOTING" && (
                     <div className="mt-2">
                       <form action={runMarketScanAction} className="inline">
