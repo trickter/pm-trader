@@ -2,7 +2,8 @@ import { placeManualOrderAction } from "@/app/actions";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { MarketDetailBlock, MarketStats, OrderbookTable, OutcomeList, ShellPage } from "@/components/market-pages";
 import { CopyableId } from "@/components/ui/display";
-import { EmptyState, SectionCard, TextInput } from "@/components/ui/primitives";
+import { EmptyState, SectionCard, StatusPill, TextInput } from "@/components/ui/primitives";
+import { getRuntimeSettings } from "@/lib/db/settings";
 import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { formatDate } from "@/lib/utils";
@@ -11,16 +12,22 @@ export const dynamic = "force-dynamic";
 
 export default async function MarketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ marketId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { marketId } = await params;
+  const query = await searchParams;
   const market = await getMarketById(marketId, { skipCache: true });
   const tokenIds = market.clobTokenIds ? JSON.parse(market.clobTokenIds) : [];
   const primaryTokenId = tokenIds[0];
+  const runtime = await getRuntimeSettings();
   const quote = primaryTokenId
     ? await getMarketQuotePreferWs(primaryTokenId).catch(() => null)
     : null;
+  const orderStatus = getSingleSearchParam(query.orderStatus);
+  const orderDetail = getSingleSearchParam(query.orderDetail);
 
   return (
     <ShellPage
@@ -29,6 +36,8 @@ export default async function MarketDetailPage({
       description="展示官方确认的市场基础字段、outcome / token 映射、盘口与手工下单。实时行情优先来自服务端 market WebSocket，缺失时短时回退 HTTP snapshot。"
     >
       <div className="space-y-6">
+        {orderStatus ? <ManualOrderFeedback status={orderStatus} detail={orderDetail} /> : null}
+
         <SectionCard title="市场概览" description="来源: Gamma + CLOB">
           <MarketStats market={market} quote={quote ?? undefined} />
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -45,6 +54,16 @@ export default async function MarketDetailPage({
           </SectionCard>
 
           <SectionCard title="手工限价单" description="按官方语义只提交 limit order，不伪造 market order。">
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <StatusPill tone={runtime.defaultDryRun ? "warn" : "danger"}>
+                {runtime.defaultDryRun ? "dry-run" : "live"}
+              </StatusPill>
+              <span className="text-[var(--muted)]">
+                {runtime.defaultDryRun
+                  ? "当前只写本地订单记录，不会真实发单到 Polymarket。"
+                  : "当前会真实提交到 Polymarket。"}
+              </span>
+            </div>
             {primaryTokenId ? (
               <form action={placeManualOrderAction} className="grid gap-4 md:grid-cols-2">
                 <input type="hidden" name="marketId" value={market.id} />
@@ -92,5 +111,42 @@ export default async function MarketDetailPage({
         )}
       </div>
     </ShellPage>
+  );
+}
+
+function getSingleSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function ManualOrderFeedback({
+  status,
+  detail,
+}: {
+  status: string;
+  detail?: string;
+}) {
+  const tone =
+    status === "submitted"
+      ? "good"
+      : status === "dry_run"
+        ? "warn"
+        : "danger";
+
+  const message =
+    status === "submitted"
+      ? `限价单已提交到 Polymarket。订单 ID: ${detail ?? "--"}`
+      : status === "dry_run"
+        ? `已记录一笔 dry-run 订单。本地订单 ID: ${detail ?? "--"}`
+        : status === "rejected"
+          ? `订单被拒绝: ${detail ?? "Unknown rejection"}`
+          : `下单失败: ${detail ?? "Unknown error"}`;
+
+  return (
+    <SectionCard title="手工下单结果" description="来源: 本次提交结果">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <StatusPill tone={tone}>{status}</StatusPill>
+        <p className="text-[var(--muted)]">{message}</p>
+      </div>
+    </SectionCard>
   );
 }

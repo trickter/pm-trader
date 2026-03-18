@@ -2,6 +2,7 @@
 
 import { StrategySide, StrategyType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { verifyAdminToken } from "@/lib/auth";
@@ -78,6 +79,18 @@ function getOptionalFormValue(formData: FormData, key: string) {
   }
 
   return value;
+}
+
+function redirectToMarketOrderResult(
+  marketId: string,
+  status: "dry_run" | "submitted" | "rejected" | "error",
+  detail?: string,
+) {
+  const params = new URLSearchParams({ orderStatus: status });
+  if (detail) {
+    params.set("orderDetail", detail);
+  }
+  redirect(`/markets/${marketId}?${params.toString()}`);
 }
 
 export async function createStrategyAction(formData: FormData) {
@@ -398,6 +411,17 @@ export async function placeManualOrderAction(formData: FormData) {
           errorMessage: response.success ? null : response.errorMsg ?? null,
         },
       });
+
+      await audit("manual_order_submitted", "Order", localOrder.id, {
+        dryRun: runtime.defaultDryRun,
+      }, "operator");
+      revalidatePath("/orders");
+      revalidatePath(`/markets/${marketId}`);
+      redirectToMarketOrderResult(
+        marketId,
+        response.success ? "submitted" : "rejected",
+        response.success ? (response.orderID ?? localOrder.id) : (response.errorMsg ?? "Order rejected"),
+      );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       await db.order.update({
@@ -408,6 +432,13 @@ export async function placeManualOrderAction(formData: FormData) {
           rawResponse: { error: errorMessage },
         },
       });
+
+      await audit("manual_order_submitted", "Order", localOrder.id, {
+        dryRun: runtime.defaultDryRun,
+      }, "operator");
+      revalidatePath("/orders");
+      revalidatePath(`/markets/${marketId}`);
+      redirectToMarketOrderResult(marketId, "error", errorMessage);
     }
   }
 
@@ -415,6 +446,8 @@ export async function placeManualOrderAction(formData: FormData) {
     dryRun: runtime.defaultDryRun,
   }, "operator");
   revalidatePath("/orders");
+  revalidatePath(`/markets/${marketId}`);
+  redirectToMarketOrderResult(marketId, "dry_run", localOrder.id);
 }
 
 export async function cancelAllOrdersAction() {
