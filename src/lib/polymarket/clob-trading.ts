@@ -13,51 +13,145 @@ import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
 
 import { env } from "@/lib/env";
-import { getTradingScope, isTradingConfigured } from "@/lib/polymarket/server-config";
+import { logger } from "@/lib/logger";
+import {
+  getTradingScope,
+  isTradingConfigured,
+  type TradingSignatureType,
+} from "@/lib/polymarket/server-config";
 
 let cachedClient: ClobClient | null = null;
 let cachedApiCreds: Awaited<ReturnType<ClobClient["createOrDeriveApiKey"]>> | null = null;
+let cachedResolvedSignatureType: TradingSignatureType | null = null;
+let cachedAuthStatus:
+  | {
+      checkedAt: number;
+      ok: boolean;
+      signerAddress: string | null;
+      funderAddress: string | null;
+      traderAddress: string | null;
+      configuredSignatureType: TradingSignatureType;
+      resolvedSignatureType: TradingSignatureType | null;
+      error: string | null;
+      attempts?: Array<{ signatureType: TradingSignatureType; error: string }>;
+    }
+  | null = null;
 
-async function createClient() {
-  if (!isTradingConfigured()) {
-    throw new Error("Trading credentials are not configured");
-  }
+const AUTH_STATUS_TTL_MS = 60_000;
 
-  const privateKey = (
+function getNormalizedPrivateKey() {
+  return (
     env.POLYMARKET_PRIVATE_KEY.startsWith("0x")
       ? env.POLYMARKET_PRIVATE_KEY
       : `0x${env.POLYMARKET_PRIVATE_KEY}`
   ) as Hex;
+}
 
+function getAuthContext() {
+  const privateKey = getNormalizedPrivateKey();
   const account = privateKeyToAccount(privateKey);
-
   const walletClient = createWalletClient({
     account,
     chain: polygon,
     transport: http(),
   });
   const tradingScope = getTradingScope();
-  const signatureType =
-    tradingScope.signatureType === 2 ? SignatureType.POLY_GNOSIS_SAFE : SignatureType.EOA;
+  const configuredSignatureType = tradingScope.signatureType;
 
-  const creds = await new ClobClient(
+  return {
+    account,
+    walletClient,
+    configuredSignatureType,
+    funderAddress: env.POLYMARKET_FUNDER_ADDRESS || null,
+    traderAddress: env.POLYMARKET_TRADER_ADDRESS || null,
+  };
+}
+
+function toClientSignatureType(signatureType: TradingSignatureType) {
+  if (signatureType === 2) return SignatureType.POLY_GNOSIS_SAFE;
+  if (signatureType === 1) return SignatureType.POLY_PROXY;
+  return SignatureType.EOA;
+}
+
+function createL1AuthClient() {
+  const { walletClient } = getAuthContext();
+  return new ClobClient(
     env.POLYMARKET_CLOB_HOST,
     env.POLYMARKET_CHAIN_ID as Chain,
     walletClient,
     undefined,
-    signatureType,
-    env.POLYMARKET_FUNDER_ADDRESS || undefined,
-  ).createOrDeriveApiKey();
+    undefined,
+    undefined,
+    undefined,
+    false,
+    undefined,
+    undefined,
+    true,
+    30_000,
+    true,
+  );
+}
+
+async function createOrDeriveApiCredentials() {
+  const client = createL1AuthClient();
+  try {
+    return await client.createApiKey();
+  } catch (error) {
+    logger.warn("polymarket create api key failed, falling back to derive", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return client.deriveApiKey();
+  }
+}
+
+async function createClient() {
+  if (!isTradingConfigured()) {
+    throw new Error("Trading credentials are not configured");
+  }
+
+  const { account, walletClient, configuredSignatureType, funderAddress, traderAddress } = getAuthContext();
+  let creds: Awaited<ReturnType<ClobClient["createOrDeriveApiKey"]>> | null = null;
+  try {
+    creds = await createOrDeriveApiCredentials();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    cachedAuthStatus = {
+      checkedAt: Date.now(),
+      ok: false,
+      signerAddress: account.address,
+      funderAddress,
+      traderAddress,
+      configuredSignatureType,
+      resolvedSignatureType: null,
+      error: `Could not create or derive Polymarket API key for signer ${account.address}`,
+      attempts: [{ signatureType: configuredSignatureType, error: message }],
+    };
+
+    throw new Error(
+      `Polymarket L1 auth failed for signer ${account.address}.`,
+    );
+  }
 
   cachedApiCreds = creds;
+  cachedResolvedSignatureType = configuredSignatureType;
+  cachedAuthStatus = {
+    checkedAt: Date.now(),
+    ok: true,
+    signerAddress: account.address,
+    funderAddress,
+    traderAddress,
+    configuredSignatureType,
+    resolvedSignatureType: configuredSignatureType,
+    error: null,
+  };
 
   return new ClobClient(
     env.POLYMARKET_CLOB_HOST,
     env.POLYMARKET_CHAIN_ID as Chain,
     walletClient,
     creds,
-    signatureType,
-    env.POLYMARKET_FUNDER_ADDRESS || undefined,
+    toClientSignatureType(configuredSignatureType),
+    funderAddress ?? undefined,
     undefined,
     false,
     undefined,
@@ -86,6 +180,49 @@ export async function getOrCreateApiCredentials() {
   }
 
   return cachedApiCreds;
+}
+
+export async function getTradingAuthStatus() {
+  if (cachedAuthStatus && Date.now() - cachedAuthStatus.checkedAt < AUTH_STATUS_TTL_MS) {
+    return cachedAuthStatus;
+  }
+
+  if (!isTradingConfigured()) {
+    const status = {
+      checkedAt: Date.now(),
+      ok: false,
+      signerAddress: null,
+      funderAddress: env.POLYMARKET_FUNDER_ADDRESS || null,
+      traderAddress: env.POLYMARKET_TRADER_ADDRESS || null,
+      configuredSignatureType: getTradingScope().signatureType,
+      resolvedSignatureType: null,
+      error: "Trading credentials are not configured",
+    };
+    cachedAuthStatus = status;
+    return status;
+  }
+
+  try {
+    await getClient();
+  } catch {
+    // createClient already populated cachedAuthStatus with enriched details
+  }
+
+  if (!cachedAuthStatus) {
+    const { account, configuredSignatureType, funderAddress, traderAddress } = getAuthContext();
+    cachedAuthStatus = {
+      checkedAt: Date.now(),
+      ok: false,
+      signerAddress: account.address,
+      funderAddress,
+      traderAddress,
+      configuredSignatureType,
+      resolvedSignatureType: cachedResolvedSignatureType,
+      error: "Unknown Polymarket auth state",
+    };
+  }
+
+  return cachedAuthStatus;
 }
 
 export async function placeLimitOrder(input: {

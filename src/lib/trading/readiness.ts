@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getRuntimeSettings } from "@/lib/db/settings";
+import { getTradingAuthStatus } from "@/lib/polymarket/clob-trading";
 import {
   ensurePolymarketTargetsTracked,
   getLiveMarketSnapshot,
@@ -24,9 +25,10 @@ export type TradingReadiness = {
 };
 
 export async function getTradingReadiness() {
-  const [runtime, health] = await Promise.all([
+  const [runtime, health, auth] = await Promise.all([
     getRuntimeSettings(),
     getTradingTransportHealth(),
+    getTradingAuthStatus(),
   ]);
 
   const latestMarketActivity = Math.max(
@@ -47,19 +49,29 @@ export async function getTradingReadiness() {
     (latestUserActivity === 0 || now - latestUserActivity <= runtime.maxUserStateStalenessMs);
 
   return {
-    ready: !health.tradingBlocked && !health.reconciling && marketFresh && userFresh,
+    ready: !health.tradingBlocked && !health.reconciling && marketFresh && userFresh && auth.ok,
     marketFresh,
     userFresh,
-    tradingBlocked: health.tradingBlocked,
+    tradingBlocked: health.tradingBlocked || !auth.ok,
     reconciling: health.reconciling,
-    blockReason: health.blockReason,
+    blockReason: !auth.ok ? auth.error : health.blockReason,
     maxMarketDataStalenessMs: runtime.maxMarketDataStalenessMs,
     maxUserStateStalenessMs: runtime.maxUserStateStalenessMs,
     lastMarketMessageAt: health.lastMarketMessageAt,
     lastUserMessageAt: health.lastUserMessageAt,
     lastMarketReconciledAt: health.lastMarketReconciledAt,
     lastUserReconciledAt: health.lastUserReconciledAt,
-    healthDetails: health.details,
+    healthDetails: {
+      ...health.details,
+      authOk: auth.ok,
+      authError: auth.error,
+      signerAddress: auth.signerAddress,
+      funderAddress: auth.funderAddress,
+      traderAddress: auth.traderAddress,
+      configuredSignatureType: auth.configuredSignatureType,
+      resolvedSignatureType: auth.resolvedSignatureType,
+      authAttempts: "attempts" in auth ? auth.attempts : undefined,
+    },
   } satisfies TradingReadiness;
 }
 

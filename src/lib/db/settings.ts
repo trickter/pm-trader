@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import type { TradingSignatureType, TradingWalletMode } from "@/lib/polymarket/server-config";
+import { normalizeSignatureType, signatureTypeToWalletMode } from "@/lib/polymarket/server-config";
 
 export type GlobalRiskSettings = {
   globalMaxExposure: number;
@@ -12,15 +14,15 @@ export type GlobalRiskSettings = {
 export type RuntimeSettings = {
   apiHost: string;
   chainId: number;
-  walletMode: "EOA" | "POLY_GNOSIS_SAFE";
-  signatureType: 0 | 2;
+  walletMode: TradingWalletMode;
+  signatureType: TradingSignatureType;
   defaultDryRun: boolean;
   maxMarketDataStalenessMs: number;
   maxUserStateStalenessMs: number;
 };
 
 function inferWalletMode(signatureType: number): RuntimeSettings["walletMode"] {
-  return signatureType === 2 ? "POLY_GNOSIS_SAFE" : "EOA";
+  return signatureTypeToWalletMode(signatureType);
 }
 
 export const defaultRiskSettings: GlobalRiskSettings = {
@@ -35,7 +37,7 @@ export const defaultRuntimeSettings: RuntimeSettings = {
   apiHost: env.POLYMARKET_CLOB_HOST,
   chainId: env.POLYMARKET_CHAIN_ID,
   walletMode: inferWalletMode(env.POLYMARKET_SIGNATURE_TYPE),
-  signatureType: env.POLYMARKET_SIGNATURE_TYPE === 2 ? 2 : 0,
+  signatureType: normalizeSignatureType(env.POLYMARKET_SIGNATURE_TYPE),
   defaultDryRun: env.SYSTEM_DEFAULT_DRY_RUN,
   maxMarketDataStalenessMs: 5000,
   maxUserStateStalenessMs: 5000,
@@ -64,7 +66,7 @@ export async function setRiskSettings(value: GlobalRiskSettings) {
 
 export async function getRuntimeSettings() {
   const stored = await getSetting<Partial<RuntimeSettings>>("runtime", defaultRuntimeSettings);
-  const signatureType = stored.signatureType === 2 ? 2 : defaultRuntimeSettings.signatureType;
+  const signatureType = normalizeSignatureType(stored.signatureType ?? defaultRuntimeSettings.signatureType);
 
   return {
     ...defaultRuntimeSettings,

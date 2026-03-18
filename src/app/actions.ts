@@ -233,7 +233,7 @@ export async function updateRuntimeSettingsAction(formData: FormData) {
     apiHost: String(formData.get("apiHost") || env.POLYMARKET_CLOB_HOST),
     chainId: Number(formData.get("chainId") || env.POLYMARKET_CHAIN_ID),
     walletMode: getTradingScope().walletMode,
-    signatureType: getTradingScope().signatureType as 0 | 2,
+    signatureType: getTradingScope().signatureType,
     defaultDryRun: formData.get("defaultDryRun") === "on",
     maxMarketDataStalenessMs: Number(formData.get("maxMarketDataStalenessMs") || 5000),
     maxUserStateStalenessMs: Number(formData.get("maxUserStateStalenessMs") || 5000),

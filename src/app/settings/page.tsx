@@ -24,6 +24,7 @@ export default async function SettingsPage() {
   ]);
 
   const tradingScope = getTradingScope();
+  const healthDetails = readiness.healthDetails as Record<string, unknown>;
 
   return (
     <ShellPage eyebrow="Server Runtime" title="系统设置" description="所有密钥都只存在服务端环境变量中，前端只展示是否已配置和适用范围，不回显敏感值。">
@@ -70,7 +71,7 @@ export default async function SettingsPage() {
             <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
               <p className="font-medium">signature mode</p>
               <p className="mt-2 text-[var(--muted)]">
-                当前支持官方已确认的 `EOA(0)` 与 `POLY_GNOSIS_SAFE(2)`。当前配置值: signatureType {tradingScope.signatureType}, walletMode {tradingScope.walletMode}, chainId {tradingScope.chainId}。
+                当前支持 `EOA(0)`、`POLY_PROXY(1)` 与 `POLY_GNOSIS_SAFE(2)`。当前配置值: signatureType {tradingScope.signatureType}, walletMode {tradingScope.walletMode}, chainId {tradingScope.chainId}。
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
@@ -78,6 +79,21 @@ export default async function SettingsPage() {
               <p className="mt-2 text-[var(--muted)]">
                 `POLYMARKET_PRIVATE_KEY`: {env.POLYMARKET_PRIVATE_KEY ? "configured" : "missing"} · `POLYMARKET_TRADER_ADDRESS`:{" "}
                 {env.POLYMARKET_TRADER_ADDRESS ? "configured" : "missing"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] px-4 py-3">
+              <p className="font-medium">auth diagnostics</p>
+              <p className="mt-2 text-[var(--muted)]">
+                signer: {String(readiness.healthDetails.signerAddress ?? "unknown")}
+              </p>
+              <p className="mt-2 text-[var(--muted)]">
+                funder: {String(readiness.healthDetails.funderAddress ?? "unknown")}
+              </p>
+              <p className="mt-2 text-[var(--muted)]">
+                auth status: {String(healthDetails.authOk ? "ok" : "failed")}
+              </p>
+              <p className="mt-2 break-words text-[var(--muted)]">
+                auth error: {String(healthDetails.authError ?? "none")}
               </p>
             </div>
           </div>
@@ -120,11 +136,11 @@ export default async function SettingsPage() {
             </div>
             <div className="rounded-2xl border border-[var(--line)] px-4 py-3 md:col-span-2">
               <p className="font-medium">reconcile diagnostics</p>
-              <p className="mt-2 text-[var(--muted)]">status: {String(readiness.healthDetails.lastReconcileStatus ?? "unknown")}</p>
-              <p className="mt-2 text-[var(--muted)]">reason: {String(readiness.healthDetails.lastReconcileReason ?? "none")}</p>
-              <p className="mt-2 text-[var(--muted)]">attempt: {String(readiness.healthDetails.reconcileAttempt ?? 0)}</p>
-              <p className="mt-2 text-[var(--muted)]">failure count: {String(readiness.healthDetails.reconcileFailureCount ?? 0)}</p>
-              <p className="mt-2 break-words text-[var(--muted)]">last error: {String(readiness.healthDetails.lastReconcileError ?? "none")}</p>
+              <p className="mt-2 text-[var(--muted)]">status: {String(healthDetails.lastReconcileStatus ?? "unknown")}</p>
+              <p className="mt-2 text-[var(--muted)]">reason: {String(healthDetails.lastReconcileReason ?? "none")}</p>
+              <p className="mt-2 text-[var(--muted)]">attempt: {String(healthDetails.reconcileAttempt ?? 0)}</p>
+              <p className="mt-2 text-[var(--muted)]">failure count: {String(healthDetails.reconcileFailureCount ?? 0)}</p>
+              <p className="mt-2 break-words text-[var(--muted)]">last error: {String(healthDetails.lastReconcileError ?? "none")}</p>
             </div>
           </div>
         </SectionCard>

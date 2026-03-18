@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     apiHost: parsed.data.apiHost ?? env.POLYMARKET_CLOB_HOST,
     chainId: parsed.data.chainId ?? env.POLYMARKET_CHAIN_ID,
     walletMode: getTradingScope().walletMode,
-    signatureType: getTradingScope().signatureType as 0 | 2,
+    signatureType: getTradingScope().signatureType,
     defaultDryRun: parsed.data.defaultDryRun,
     maxMarketDataStalenessMs: parsed.data.maxMarketDataStalenessMs,
     maxUserStateStalenessMs: parsed.data.maxUserStateStalenessMs,
