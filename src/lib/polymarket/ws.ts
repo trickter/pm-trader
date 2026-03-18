@@ -197,6 +197,8 @@ class PolymarketStreamSupervisor {
   private userSocket: WebSocket | null = null;
   private marketReconnectAttempt = 0;
   private userReconnectAttempt = 0;
+  private marketReconnectTimer: NodeJS.Timeout | null = null;
+  private userReconnectTimer: NodeJS.Timeout | null = null;
   private targetRefreshTimer: NodeJS.Timeout | null = null;
   private monitorTimer: NodeJS.Timeout | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
@@ -656,8 +658,19 @@ class PolymarketStreamSupervisor {
       return;
     }
 
-    this.marketSocket = new WebSocket(MARKET_WS_URL);
-    this.marketSocket.addEventListener("open", () => {
+    const socket = new WebSocket(MARKET_WS_URL);
+    this.marketSocket = socket;
+
+    socket.addEventListener("open", () => {
+      if (this.marketSocket !== socket) {
+        return;
+      }
+
+      if (this.marketReconnectTimer) {
+        clearTimeout(this.marketReconnectTimer);
+        this.marketReconnectTimer = null;
+      }
+
       this.marketReconnectAttempt = 0;
       void this.patchHealth({
         marketWsConnected: true,
@@ -669,11 +682,19 @@ class PolymarketStreamSupervisor {
       void this.reconcile("reconnect");
     });
 
-    this.marketSocket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (this.marketSocket !== socket) {
+        return;
+      }
+
       void this.handleMarketMessage(String(event.data));
     });
 
-    this.marketSocket.addEventListener("close", () => {
+    socket.addEventListener("close", () => {
+      if (this.marketSocket === socket) {
+        this.marketSocket = null;
+      }
+
       void this.patchHealth({
         marketWsConnected: false,
         tradingBlocked: this.trackedTokenIds.size > 0 || this.health.userStale,
@@ -683,8 +704,14 @@ class PolymarketStreamSupervisor {
       this.scheduleMarketReconnect();
     });
 
-    this.marketSocket.addEventListener("error", () => {
-      this.marketSocket?.close();
+    socket.addEventListener("error", () => {
+      if (this.marketSocket !== socket) {
+        return;
+      }
+
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     });
   }
 
@@ -703,8 +730,19 @@ class PolymarketStreamSupervisor {
       return;
     }
 
-    this.userSocket = new WebSocket(USER_WS_URL);
-    this.userSocket.addEventListener("open", () => {
+    const socket = new WebSocket(USER_WS_URL);
+    this.userSocket = socket;
+
+    socket.addEventListener("open", () => {
+      if (this.userSocket !== socket) {
+        return;
+      }
+
+      if (this.userReconnectTimer) {
+        clearTimeout(this.userReconnectTimer);
+        this.userReconnectTimer = null;
+      }
+
       this.userReconnectAttempt = 0;
       void this.patchHealth({
         userWsConnected: true,
@@ -716,11 +754,19 @@ class PolymarketStreamSupervisor {
       void this.reconcile("reconnect");
     });
 
-    this.userSocket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (this.userSocket !== socket) {
+        return;
+      }
+
       void this.handleUserMessage(String(event.data));
     });
 
-    this.userSocket.addEventListener("close", () => {
+    socket.addEventListener("close", () => {
+      if (this.userSocket === socket) {
+        this.userSocket = null;
+      }
+
       void this.patchHealth({
         userWsConnected: false,
         tradingBlocked: this.trackedConditionIds.size > 0 || this.health.marketStale,
@@ -730,8 +776,14 @@ class PolymarketStreamSupervisor {
       this.scheduleUserReconnect();
     });
 
-    this.userSocket.addEventListener("error", () => {
-      this.userSocket?.close();
+    socket.addEventListener("error", () => {
+      if (this.userSocket !== socket) {
+        return;
+      }
+
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     });
   }
 
@@ -769,15 +821,29 @@ class PolymarketStreamSupervisor {
   }
 
   private scheduleMarketReconnect() {
+    if (this.marketReconnectTimer) {
+      return;
+    }
+
     const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** this.marketReconnectAttempt, RECONNECT_MAX_DELAY_MS);
     this.marketReconnectAttempt += 1;
-    setTimeout(() => this.connectMarketSocket(), delay);
+    this.marketReconnectTimer = setTimeout(() => {
+      this.marketReconnectTimer = null;
+      this.connectMarketSocket();
+    }, delay);
   }
 
   private scheduleUserReconnect() {
+    if (this.userReconnectTimer) {
+      return;
+    }
+
     const delay = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** this.userReconnectAttempt, RECONNECT_MAX_DELAY_MS);
     this.userReconnectAttempt += 1;
-    setTimeout(() => this.connectUserSocket(), delay);
+    this.userReconnectTimer = setTimeout(() => {
+      this.userReconnectTimer = null;
+      this.connectUserSocket();
+    }, delay);
   }
 
   private async handleMarketMessage(raw: string) {
