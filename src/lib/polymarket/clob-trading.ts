@@ -23,6 +23,7 @@ import {
 let cachedClient: ClobClient | null = null;
 let cachedApiCreds: Awaited<ReturnType<ClobClient["createOrDeriveApiKey"]>> | null = null;
 let cachedResolvedSignatureType: TradingSignatureType | null = null;
+let clientInitPromise: Promise<ClobClient> | null = null;
 let cachedAuthStatus:
   | {
       checkedAt: number;
@@ -163,10 +164,22 @@ async function createClient() {
 }
 
 async function getClient() {
-  if (!cachedClient) {
-    cachedClient = await createClient();
+  if (cachedClient) {
+    return cachedClient;
   }
-  return cachedClient;
+
+  if (!clientInitPromise) {
+    clientInitPromise = createClient()
+      .then((client) => {
+        cachedClient = client;
+        return client;
+      })
+      .finally(() => {
+        clientInitPromise = null;
+      });
+  }
+
+  return clientInitPromise;
 }
 
 export async function getOrCreateApiCredentials() {
