@@ -117,14 +117,13 @@ export async function discoverMarkets(params: DiscoverMarketsParams = {}) {
 export async function discoverAllMarkets(
   params: Omit<DiscoverMarketsParams, 'offset'> & { maxPages?: number },
 ): Promise<GammaMarket[]> {
-  const pageSize = params.limit ?? 100;
-  const maxPages = params.maxPages ?? 3;
+  const { maxPages = 3, ...queryParams } = params;
+  const pageSize = queryParams.limit ?? 100;
   const allMarkets: GammaMarket[] = [];
   for (let page = 0; page < maxPages; page++) {
-    const events = await discoverEvents({ ...params, limit: pageSize, offset: page * pageSize });
-    const batch = events.flatMap((event) => event.markets ?? []);
+    const batch = await discoverMarkets({ ...queryParams, limit: pageSize, offset: page * pageSize });
     allMarkets.push(...batch);
-    if (events.length < pageSize) break;
+    if (batch.length < pageSize) break;
   }
   return dedupeMarkets(allMarkets);
 }

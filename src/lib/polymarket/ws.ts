@@ -9,6 +9,7 @@ import { getOrderBook } from "@/lib/polymarket/clob-public";
 import { getOrCreateApiCredentials, listOpenOrders, listTrades } from "@/lib/polymarket/clob-trading";
 import { getPositions } from "@/lib/polymarket/data";
 import { getMarketById } from "@/lib/polymarket/gamma";
+import { getBestAskLevel, getBestBidLevel } from "@/lib/polymarket/orderbook";
 import {
   clobOrderBookSchema,
   marketWsMessageSchema,
@@ -100,11 +101,11 @@ function compareStringSets(a: Set<string>, b: Set<string>) {
 }
 
 function bestBidFromBook(book?: LiveMarketSnapshot["book"]) {
-  return book?.bids?.[0]?.price;
+  return getBestBidLevel(book)?.price;
 }
 
 function bestAskFromBook(book?: LiveMarketSnapshot["book"]) {
-  return book?.asks?.[0]?.price;
+  return getBestAskLevel(book)?.price;
 }
 
 function computeSpread(bestBid?: string, bestAsk?: string) {

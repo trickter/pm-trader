@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { discoverAllMarkets } from "@/lib/polymarket/gamma";
+import { discoverMarkets } from "@/lib/polymarket/gamma";
 import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 import type { GammaMarket, ClobOrderBook } from "@/lib/polymarket/types";
 import type { DiscoveryQueryScopeParams } from "@/lib/strategy/config";
@@ -25,6 +25,28 @@ export type MarketSuitabilityResult = {
   spread: number;
   yesTokenId: string | null;
   noTokenId: string | null;
+};
+
+export type MarketScanDiagnostics = {
+  fetchedMarkets: number;
+  pagesScanned: number;
+  hardFilteredMarkets: number;
+  quoteFetchAttempts: number;
+  quoteFetchFailures: number;
+  scoredMarkets: number;
+  rejectedByPriceRange: number;
+  rejectedByLiquidity: number;
+  rejectedByVolume: number;
+  rejectedByBookDepth: number;
+  rejectedBySpread: number;
+  rejectedByExpiry: number;
+  qualifiedMarkets: number;
+  error?: string;
+};
+
+export type MarketScanResult = {
+  results: MarketSuitabilityResult[];
+  diagnostics: MarketScanDiagnostics;
 };
 
 // Weights for suitability scoring (sum = 100)
@@ -125,17 +147,49 @@ export async function scanMarketsForRangeQuoting(
   params: TwoSidedRangeQuotingParams,
   scope: DiscoveryQueryScopeParams,
   options: { limit?: number } = {},
-): Promise<MarketSuitabilityResult[]> {
+): Promise<MarketScanResult> {
   const limit = options.limit ?? scope.maxMarketsTracked * 3;
+  const pageSize = 100;
+  const maxPages = Math.max(1, Math.ceil(Math.max(limit * 8, 300) / pageSize));
+  const diagnostics: MarketScanDiagnostics = {
+    fetchedMarkets: 0,
+    pagesScanned: 0,
+    hardFilteredMarkets: 0,
+    quoteFetchAttempts: 0,
+    quoteFetchFailures: 0,
+    scoredMarkets: 0,
+    rejectedByPriceRange: 0,
+    rejectedByLiquidity: 0,
+    rejectedByVolume: 0,
+    rejectedByBookDepth: 0,
+    rejectedBySpread: 0,
+    rejectedByExpiry: 0,
+    qualifiedMarkets: 0,
+  };
 
-  // Fetch active markets
-  let markets: GammaMarket[];
+  const markets: GammaMarket[] = [];
   try {
-    markets = await discoverAllMarkets({ active: true, limit: 100, maxPages: Math.ceil(limit / 100), order: "liquidity", ascending: false });
+    for (let page = 0; page < maxPages; page += 1) {
+      const batch = await discoverMarkets({
+        active: true,
+        closed: false,
+        limit: pageSize,
+        offset: page * pageSize,
+        order: "liquidity",
+        ascending: false,
+      });
+      diagnostics.pagesScanned += 1;
+      markets.push(...batch);
+      if (batch.length < pageSize) {
+        break;
+      }
+    }
   } catch (error) {
-    logger.error("market scan failed", { error: error instanceof Error ? error.message : String(error) });
-    return [];
+    diagnostics.error = error instanceof Error ? error.message : String(error);
+    logger.error("market scan failed", { error: diagnostics.error });
+    return { results: [], diagnostics };
   }
+  diagnostics.fetchedMarkets = markets.length;
 
   // Hard filter: must be active, accepting orders, have token IDs
   const candidates = markets.filter((m) => {
@@ -156,6 +210,7 @@ export async function scanMarketsForRangeQuoting(
 
     return true;
   });
+  diagnostics.hardFilteredMarkets = candidates.length;
 
   // Score each candidate (fetch orderbook in parallel, batched to avoid overwhelming API)
   const results: MarketSuitabilityResult[] = [];
@@ -170,8 +225,10 @@ export async function scanMarketsForRangeQuoting(
 
         let quote;
         try {
+          diagnostics.quoteFetchAttempts += 1;
           quote = await getMarketQuotePreferWs(yesTokenId);
         } catch {
+          diagnostics.quoteFetchFailures += 1;
           return null;
         }
 
@@ -187,6 +244,7 @@ export async function scanMarketsForRangeQuoting(
         const bookDepthScore = scoreBookDepth(quote.book, scope.minBookDepth);
         const spreadScore = scoreSpread(spread, scope.maxSpread);
         const timeToExpiryScore = scoreTimeToExpiry(market.endDate, scope.minTimeToExpiryMinutes);
+        diagnostics.scoredMarkets += 1;
 
         // Weighted total
         const score = Math.round(
@@ -201,12 +259,33 @@ export async function scanMarketsForRangeQuoting(
 
         // Qualification: score >= 40 and no hard-fail sub-scores
         const hardFails: string[] = [];
-        if (priceRangeScore === 0) hardFails.push("price out of range");
-        if (liquidityScore === 0) hardFails.push("insufficient liquidity");
-        if (spreadScore === 0) hardFails.push("spread too wide");
-        if (timeToExpiryScore === 0) hardFails.push("too close to expiry");
+        if (priceRangeScore === 0) {
+          diagnostics.rejectedByPriceRange += 1;
+          hardFails.push("price out of range");
+        }
+        if (liquidityScore === 0) {
+          diagnostics.rejectedByLiquidity += 1;
+          hardFails.push("insufficient liquidity");
+        }
+        if (volumeScore === 0) {
+          diagnostics.rejectedByVolume += 1;
+        }
+        if (bookDepthScore === 0) {
+          diagnostics.rejectedByBookDepth += 1;
+        }
+        if (spreadScore === 0) {
+          diagnostics.rejectedBySpread += 1;
+          hardFails.push("spread too wide");
+        }
+        if (timeToExpiryScore === 0) {
+          diagnostics.rejectedByExpiry += 1;
+          hardFails.push("too close to expiry");
+        }
 
         const qualified = score >= 40 && hardFails.length === 0;
+        if (qualified) {
+          diagnostics.qualifiedMarkets += 1;
+        }
         const reason = qualified
           ? `Score ${score}: qualified`
           : `Score ${score}: ${hardFails.join(", ") || "below threshold"}`;
@@ -243,7 +322,7 @@ export async function scanMarketsForRangeQuoting(
   // Sort by score descending
   results.sort((a, b) => b.score - a.score);
 
-  return results;
+  return { results, diagnostics };
 }
 
 /**

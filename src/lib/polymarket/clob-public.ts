@@ -2,6 +2,7 @@ import { Chain, ClobClient, Side } from "@polymarket/clob-client";
 import { z } from "zod";
 
 import { env } from "@/lib/env";
+import { getBestAskLevel, getBestBidLevel } from "@/lib/polymarket/orderbook";
 import {
   clobOrderBookSchema,
   clobSimplePriceSchema,
@@ -31,8 +32,8 @@ export async function getOrderBook(tokenId: string) {
 }
 
 function deriveQuoteFromBook(book: Awaited<ReturnType<typeof getOrderBook>>) {
-  const bestBid = book.bids[0]?.price ?? "0";
-  const bestAsk = book.asks[0]?.price ?? "0";
+  const bestBid = getBestBidLevel(book)?.price ?? "0";
+  const bestAsk = getBestAskLevel(book)?.price ?? "0";
   const spread = String(Math.max(Number(bestAsk) - Number(bestBid), 0));
   const midpoint = String((Number(bestBid) + Number(bestAsk)) / 2);
 

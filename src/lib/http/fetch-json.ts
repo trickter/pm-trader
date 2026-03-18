@@ -11,6 +11,40 @@ type FetchJsonOptions<TSchema extends z.ZodTypeAny> = {
   retries?: number;
 };
 
+function getProxyEnv() {
+  return (
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.ALL_PROXY ||
+    process.env.https_proxy ||
+    process.env.http_proxy ||
+    process.env.all_proxy ||
+    ""
+  );
+}
+
+function shouldPreferCurl(url: string) {
+  const proxy = getProxyEnv();
+  if (!proxy) {
+    return false;
+  }
+
+  const host = new URL(url).hostname;
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy || "";
+  const bypassHosts = noProxy
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (
+    bypassHosts.some((entry) => host === entry || (entry.startsWith(".") && host.endsWith(entry)))
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 async function fetchViaCurl(url: string, init?: RequestInit) {
   const [{ execFile }, { promisify }] = await Promise.all([
     import("node:child_process"),
@@ -23,17 +57,24 @@ async function fetchViaCurl(url: string, init?: RequestInit) {
     `${key}: ${value}`,
   ]);
   const body = typeof init?.body === "string" ? ["--data", init.body] : [];
-  const { stdout } = await execFileAsync("curl", [
-    "-sS",
-    "--fail",
-    "--max-time",
-    "20",
-    "-X",
-    method,
-    ...headers,
-    ...body,
-    url,
-  ]);
+  const { stdout } = await execFileAsync(
+    "curl",
+    [
+      "-sS",
+      "--fail",
+      "--compressed",
+      "--max-time",
+      "20",
+      "-X",
+      method,
+      ...headers,
+      ...body,
+      url,
+    ],
+    {
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
 
   return JSON.parse(stdout);
 }
@@ -72,11 +113,15 @@ export async function fetchJson<TSchema extends z.ZodTypeAny>(
 
       let raw: unknown;
       try {
-        const response = await fetch(url, requestInit);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} for ${url}`);
+        if (shouldPreferCurl(url)) {
+          raw = await fetchViaCurl(url, requestInit);
+        } else {
+          const response = await fetch(url, requestInit);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} for ${url}`);
+          }
+          raw = await response.json();
         }
-        raw = await response.json();
       } catch (fetchError) {
         logger.warn("fetchJson switching to curl fallback", {
           url,

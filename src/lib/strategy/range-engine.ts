@@ -3,6 +3,7 @@ import { Prisma, SignalType, StrategySide, StrategyType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { getBestAskLevel, getBestBidLevel } from "@/lib/polymarket/orderbook";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
 import { placeLimitOrder, cancelOrder } from "@/lib/polymarket/clob-trading";
@@ -90,8 +91,8 @@ async function processTokenSide(
   const midPrice = Number(quote.midpoint);
   const spread = Number(quote.spread);
   const tickSize = Number(market.orderPriceMinTickSize ?? 0.01);
-  const topBid = quote.book?.bids[0];
-  const topAsk = quote.book?.asks[0];
+  const topBid = getBestBidLevel(quote.book);
+  const topAsk = getBestAskLevel(quote.book);
 
   if (params.maxQuoteAgeMs > 0 && Date.now() - quote.lastUpdatedAt.getTime() > params.maxQuoteAgeMs) {
     logger.info(`range-engine: skipping stale quote for ${tokenLabel}`, {
@@ -538,9 +539,9 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
           return null;
         }
 
-        const scanResults = await scanMarketsForRangeQuoting(params, discoveryScope);
-        await saveMarketSuitabilitySnapshots(scanResults, strategy.id);
-        const candidate = scanResults.find((result) => result.qualified);
+        const scan = await scanMarketsForRangeQuoting(params, discoveryScope);
+        await saveMarketSuitabilitySnapshots(scan.results, strategy.id);
+        const candidate = scan.results.find((result) => result.qualified);
 
         if (!candidate) {
           await db.strategyRun.create({
@@ -549,7 +550,8 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
               status: "no_signal",
               summary: "No qualified market found for discovery query scope",
               payload: jsonToInputValue({
-                scanned: scanResults.length,
+                scanned: scan.results.length,
+                diagnostics: scan.diagnostics,
               }),
             },
           });
@@ -688,21 +690,22 @@ export async function runRangeQuotingMarketScan(strategyId: string) {
     return { total: 0, qualified: 0, results: [] };
   }
 
-  const results = await scanMarketsForRangeQuoting(params, scope);
+  const scan = await scanMarketsForRangeQuoting(params, scope);
 
   // Save suitability snapshots
-  await saveMarketSuitabilitySnapshots(results, strategyId);
+  await saveMarketSuitabilitySnapshots(scan.results, strategyId);
 
-  const qualified = results.filter((r) => r.qualified);
+  const qualified = scan.results.filter((r) => r.qualified);
 
   await db.strategyRun.create({
     data: {
       strategyId: strategy.id,
       status: "scan",
-      summary: `Scanned ${results.length} markets, ${qualified.length} qualified`,
+      summary: `Scanned ${scan.results.length} markets, ${qualified.length} qualified`,
       payload: jsonToInputValue({
-        totalScanned: results.length,
+        totalScanned: scan.results.length,
         qualified: qualified.length,
+        diagnostics: scan.diagnostics,
         topMarkets: qualified.slice(0, 5).map((r) => ({
           marketId: r.marketId,
           question: r.question,
@@ -722,5 +725,5 @@ export async function runRangeQuotingMarketScan(strategyId: string) {
     }, "range-engine");
   }
 
-  return { total: results.length, qualified: qualified.length, results };
+  return { total: scan.results.length, qualified: qualified.length, results: scan.results, diagnostics: scan.diagnostics };
 }

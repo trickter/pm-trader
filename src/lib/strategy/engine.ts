@@ -3,6 +3,7 @@ import { Prisma, SignalType, StrategySide, StrategyType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { getBestAskLevel, getBestBidLevel } from "@/lib/polymarket/orderbook";
 import { getMarketById } from "@/lib/polymarket/gamma";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
 import { ensurePolymarketTargetsTracked } from "@/lib/polymarket/ws";
@@ -61,8 +62,8 @@ async function executeStrategy(strategyId: string) {
     tokenId: target.tokenId,
     conditionId: market.conditionId ?? undefined,
   });
-  const topBid = quote.book?.bids[0];
-  const topAsk = quote.book?.asks[0];
+  const topBid = getBestBidLevel(quote.book);
+  const topAsk = getBestAskLevel(quote.book);
   const observedPrice = Number(strategy.side === StrategySide.BUY ? quote.bestAsk : quote.bestBid);
   const observedSpread = Number(quote.spread);
 
