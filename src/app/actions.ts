@@ -3,6 +3,7 @@
 import { StrategySide, StrategyType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { z } from "zod";
 
 import { verifyAdminToken } from "@/lib/auth";
@@ -423,6 +424,10 @@ export async function placeManualOrderAction(formData: FormData) {
         response.success ? (response.orderID ?? localOrder.id) : (response.errorMsg ?? "Order rejected"),
       );
     } catch (err) {
+      if (isRedirectError(err)) {
+        throw err;
+      }
+
       const errorMessage = err instanceof Error ? err.message : String(err);
       await db.order.update({
         where: { id: localOrder.id },

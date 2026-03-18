@@ -31,6 +31,14 @@ const TARGET_REFRESH_INTERVAL_MS = 15000;
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 10000;
 
+function safeParseWsPayload(raw: string) {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 type LiveMarketSnapshot = {
   tokenId: string;
   marketId: string;
@@ -853,7 +861,12 @@ class PolymarketStreamSupervisor {
   }
 
   private async handleMarketMessage(raw: string) {
-    const payload = JSON.parse(raw) as unknown;
+    const payload = safeParseWsPayload(raw);
+    if (payload == null) {
+      logger.warn("ws: ignoring non-json market payload", { raw });
+      return;
+    }
+
     const messages = Array.isArray(payload) ? payload : [payload];
 
     for (const item of messages) {
@@ -999,7 +1012,12 @@ class PolymarketStreamSupervisor {
   }
 
   private async handleUserMessage(raw: string) {
-    const payload = JSON.parse(raw) as unknown;
+    const payload = safeParseWsPayload(raw);
+    if (payload == null) {
+      logger.warn("ws: ignoring non-json user payload", { raw });
+      return;
+    }
+
     const messages = Array.isArray(payload) ? payload : [payload];
 
     for (const item of messages) {
