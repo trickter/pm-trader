@@ -67,6 +67,19 @@ const strategySchema = z.object({
   allowBothSidesInventory: z.coerce.boolean().optional(),
 });
 
+function getOptionalFormValue(formData: FormData, key: string) {
+  const value = formData.get(key);
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+
+  return value;
+}
+
 export async function createStrategyAction(formData: FormData) {
   if (!(await verifyAdminToken())) {
     throw new Error("Unauthorized");
@@ -75,9 +88,9 @@ export async function createStrategyAction(formData: FormData) {
   const values = strategySchema.parse({
     name: formData.get("name"),
     type: formData.get("type"),
-    scopeType: formData.get("scopeType"),
-    marketId: formData.get("marketId"),
-    tokenId: formData.get("tokenId"),
+    scopeType: getOptionalFormValue(formData, "scopeType"),
+    marketId: getOptionalFormValue(formData, "marketId"),
+    tokenId: getOptionalFormValue(formData, "tokenId"),
     side: formData.get("side"),
     maxOrderSize: formData.get("maxOrderSize"),
     maxDailyTradeCount: formData.get("maxDailyTradeCount"),
@@ -86,29 +99,29 @@ export async function createStrategyAction(formData: FormData) {
     cancelOpenOrdersOnStaleData: formData.get("cancelOpenOrdersOnStaleData") === "on",
     dryRun: formData.get("dryRun") === "on",
     enabled: formData.get("enabled") === "on",
-    threshold: formData.get("threshold"),
-    comparator: formData.get("comparator"),
-    maxSpread: formData.get("maxSpread"),
-    minTopDepth: formData.get("minTopDepth"),
-    imbalanceRatio: formData.get("imbalanceRatio"),
-    entryLow: formData.get("entryLow"),
-    entryHigh: formData.get("entryHigh"),
-    exitLow: formData.get("exitLow"),
-    exitHigh: formData.get("exitHigh"),
-    orderSize: formData.get("orderSize"),
-    maxInventoryPerSide: formData.get("maxInventoryPerSide"),
-    maxInventoryPerMarket: formData.get("maxInventoryPerMarket"),
-    maxOpenOrdersPerSide: formData.get("maxOpenOrdersPerSide"),
-    maxMarketsTracked: formData.get("maxMarketsTracked"),
-    minLiquidity: formData.get("minLiquidity"),
-    minVolume24h: formData.get("minVolume24h"),
-    minBookDepth: formData.get("minBookDepth"),
-    rangeMaxSpread: formData.get("rangeMaxSpread"),
-    minTimeToExpiryMinutes: formData.get("minTimeToExpiryMinutes"),
-    minTopLevelSize: formData.get("minTopLevelSize"),
-    maxQuoteAgeMs: formData.get("maxQuoteAgeMs"),
+    threshold: getOptionalFormValue(formData, "threshold"),
+    comparator: getOptionalFormValue(formData, "comparator"),
+    maxSpread: getOptionalFormValue(formData, "maxSpread"),
+    minTopDepth: getOptionalFormValue(formData, "minTopDepth"),
+    imbalanceRatio: getOptionalFormValue(formData, "imbalanceRatio"),
+    entryLow: getOptionalFormValue(formData, "entryLow"),
+    entryHigh: getOptionalFormValue(formData, "entryHigh"),
+    exitLow: getOptionalFormValue(formData, "exitLow"),
+    exitHigh: getOptionalFormValue(formData, "exitHigh"),
+    orderSize: getOptionalFormValue(formData, "orderSize"),
+    maxInventoryPerSide: getOptionalFormValue(formData, "maxInventoryPerSide"),
+    maxInventoryPerMarket: getOptionalFormValue(formData, "maxInventoryPerMarket"),
+    maxOpenOrdersPerSide: getOptionalFormValue(formData, "maxOpenOrdersPerSide"),
+    maxMarketsTracked: getOptionalFormValue(formData, "maxMarketsTracked"),
+    minLiquidity: getOptionalFormValue(formData, "minLiquidity"),
+    minVolume24h: getOptionalFormValue(formData, "minVolume24h"),
+    minBookDepth: getOptionalFormValue(formData, "minBookDepth"),
+    rangeMaxSpread: getOptionalFormValue(formData, "rangeMaxSpread"),
+    minTimeToExpiryMinutes: getOptionalFormValue(formData, "minTimeToExpiryMinutes"),
+    minTopLevelSize: getOptionalFormValue(formData, "minTopLevelSize"),
+    maxQuoteAgeMs: getOptionalFormValue(formData, "maxQuoteAgeMs"),
     trendFilterEnabled: formData.get("trendFilterEnabled") === "on",
-    trendFilterThreshold: formData.get("trendFilterThreshold"),
+    trendFilterThreshold: getOptionalFormValue(formData, "trendFilterThreshold"),
     allowBothSidesInventory: formData.get("allowBothSidesInventory") === "on",
   });
 

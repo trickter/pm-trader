@@ -11,10 +11,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const requestUrl = new URL(request.url);
+  const isHttps = forwardedProto === "https" || requestUrl.protocol === "https:";
+
   const response = NextResponse.json({ ok: true });
   response.cookies.set("admin_token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps,
     sameSite: "strict",
     path: "/",
     maxAge: 60 * 60 * 24 * 30, // 30 days
