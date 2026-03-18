@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { discoverMarkets } from "@/lib/polymarket/gamma";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
+import { discoverAllMarkets } from "@/lib/polymarket/gamma";
+import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 import type { GammaMarket, ClobOrderBook } from "@/lib/polymarket/types";
 import type { DiscoveryQueryScopeParams } from "@/lib/strategy/config";
 import type { TwoSidedRangeQuotingParams } from "@/lib/strategy/types";
@@ -131,7 +131,7 @@ export async function scanMarketsForRangeQuoting(
   // Fetch active markets
   let markets: GammaMarket[];
   try {
-    markets = await discoverMarkets({ active: true, limit });
+    markets = await discoverAllMarkets({ active: true, limit: 100, maxPages: Math.ceil(limit / 100), order: "liquidity", ascending: false });
   } catch (error) {
     logger.error("market scan failed", { error: error instanceof Error ? error.message : String(error) });
     return [];
@@ -170,7 +170,7 @@ export async function scanMarketsForRangeQuoting(
 
         let quote;
         try {
-          quote = await getMarketQuote(yesTokenId);
+          quote = await getMarketQuotePreferWs(yesTokenId);
         } catch {
           return null;
         }

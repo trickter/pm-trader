@@ -17,6 +17,9 @@ type DiscoverMarketsParams = {
   active?: boolean;
   closed?: boolean;
   limit?: number;
+  offset?: number;
+  order?: string;
+  ascending?: boolean;
 };
 
 function buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>) {
@@ -91,13 +94,39 @@ async function cacheEvent(event: GammaEvent) {
   });
 }
 
+function dedupeMarkets(markets: GammaMarket[]) {
+  const seen = new Set<string>();
+  return markets.filter((market) => {
+    if (seen.has(market.id)) {
+      return false;
+    }
+    seen.add(market.id);
+    return true;
+  });
+}
+
 export async function discoverMarkets(params: DiscoverMarketsParams = {}) {
   const markets = await fetchJson(buildUrl("/markets", params), {
     schema: gammaMarketsResponseSchema,
   });
 
-  await Promise.all(markets.slice(0, 10).map(cacheMarket));
+  await Promise.all(markets.map(cacheMarket));
   return markets;
+}
+
+export async function discoverAllMarkets(
+  params: Omit<DiscoverMarketsParams, 'offset'> & { maxPages?: number },
+): Promise<GammaMarket[]> {
+  const pageSize = params.limit ?? 100;
+  const maxPages = params.maxPages ?? 3;
+  const allMarkets: GammaMarket[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const events = await discoverEvents({ ...params, limit: pageSize, offset: page * pageSize });
+    const batch = events.flatMap((event) => event.markets ?? []);
+    allMarkets.push(...batch);
+    if (events.length < pageSize) break;
+  }
+  return dedupeMarkets(allMarkets);
 }
 
 export async function discoverEvents(params: DiscoverMarketsParams = {}) {
@@ -105,7 +134,12 @@ export async function discoverEvents(params: DiscoverMarketsParams = {}) {
     schema: gammaEventsResponseSchema,
   });
 
-  await Promise.all(events.slice(0, 10).map(cacheEvent));
+  await Promise.all(
+    events.flatMap((event) => [
+      cacheEvent(event),
+      ...((event.markets ?? []).map((market) => cacheMarket(market))),
+    ]),
+  );
   return events;
 }
 
@@ -123,7 +157,15 @@ export async function searchPolymarket(query: string) {
   return result;
 }
 
-export async function getMarketById(marketId: string) {
+const MARKET_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export async function getMarketById(marketId: string, options?: { skipCache?: boolean }) {
+  if (!options?.skipCache) {
+    const cached = await db.marketCache.findUnique({ where: { id: marketId } });
+    if (cached && Date.now() - cached.lastSyncedAt.getTime() < MARKET_CACHE_TTL_MS) {
+      return gammaMarketSchema.parse(cached.raw);
+    }
+  }
   const market = await fetchJson(buildUrl(`/markets/${marketId}`), {
     schema: gammaMarketSchema,
   });

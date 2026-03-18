@@ -7,6 +7,7 @@ import {
   clobSimplePriceSchema,
   clobSpreadSchema,
 } from "@/lib/polymarket/types";
+import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
 
 const publicClient = new ClobClient(
   env.POLYMARKET_CLOB_HOST,
@@ -27,6 +28,22 @@ const publicClient = new ClobClient(
 export async function getOrderBook(tokenId: string) {
   const book = await publicClient.getOrderBook(tokenId);
   return clobOrderBookSchema.parse(book);
+}
+
+function deriveQuoteFromBook(book: Awaited<ReturnType<typeof getOrderBook>>) {
+  const bestBid = book.bids[0]?.price ?? "0";
+  const bestAsk = book.asks[0]?.price ?? "0";
+  const spread = String(Math.max(Number(bestAsk) - Number(bestBid), 0));
+  const midpoint = String((Number(bestBid) + Number(bestAsk)) / 2);
+
+  return {
+    book,
+    bestBid,
+    bestAsk,
+    spread,
+    midpoint,
+    lastTradePrice: book.last_trade_price,
+  };
 }
 
 export async function getBestPrice(tokenId: string, side: "buy" | "sell") {
@@ -62,23 +79,25 @@ export async function getLastTradePrice(tokenId: string) {
 }
 
 export async function getMarketQuote(tokenId: string) {
-  const [book, spread, bestBid, bestAsk, midpoint, lastTrade] = await Promise.all([
-    getOrderBook(tokenId),
-    getSpread(tokenId),
-    getBestPrice(tokenId, "buy"),
-    getBestPrice(tokenId, "sell"),
-    getMidpoint(tokenId),
-    getLastTradePrice(tokenId),
-  ]);
+  const book = await getOrderBook(tokenId);
+  return deriveQuoteFromBook(book);
+}
 
-  return {
-    book,
-    spread: spread.spread,
-    bestBid: bestBid.price,
-    bestAsk: bestAsk.price,
-    midpoint: midpoint.midpoint,
-    lastTradePrice: lastTrade.price,
-  };
+export async function getMarketQuotePreferWs(tokenId: string) {
+  const snapshot = getLiveMarketSnapshot(tokenId);
+  if (snapshot?.bestBid && snapshot?.bestAsk && snapshot?.book) {
+    return {
+      book: snapshot.book,
+      spread: snapshot.spread ?? String(Number(snapshot.bestAsk) - Number(snapshot.bestBid)),
+      bestBid: snapshot.bestBid,
+      bestAsk: snapshot.bestAsk,
+      midpoint: snapshot.midpoint ?? String((Number(snapshot.bestBid) + Number(snapshot.bestAsk)) / 2),
+      lastTradePrice: snapshot.lastTradePrice ?? snapshot.bestBid,
+      source: "ws" as const,
+    };
+  }
+  const quote = await getMarketQuote(tokenId);
+  return { ...quote, source: "http" as const };
 }
 
 export async function calculateExecutableMarketPrice(tokenId: string, side: "BUY" | "SELL", amount: number) {

@@ -5,7 +5,7 @@ import { OrderStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getRuntimeSettings } from "@/lib/db/settings";
 import { logger } from "@/lib/logger";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
+import { getOrderBook } from "@/lib/polymarket/clob-public";
 import { getOrCreateApiCredentials, listOpenOrders, listTrades } from "@/lib/polymarket/clob-trading";
 import { getPositions } from "@/lib/polymarket/data";
 import { getMarketById } from "@/lib/polymarket/gamma";
@@ -333,11 +333,11 @@ class PolymarketStreamSupervisor {
 
     try {
       const trackedTokenIds = Array.from(this.trackedTokenIds);
-      const [quotes, openOrders, trades, positions] = await Promise.all([
-        Promise.all(
+      const [quoteResults, openOrders, trades, positions] = await Promise.all([
+        Promise.allSettled(
           trackedTokenIds.map(async (tokenId) => ({
             tokenId,
-            quote: await getMarketQuote(tokenId),
+            book: await getOrderBook(tokenId),
           })),
         ),
         listOpenOrders().catch(() => []),
@@ -347,22 +347,26 @@ class PolymarketStreamSupervisor {
 
       const now = new Date();
 
-      for (const { tokenId, quote } of quotes) {
+      for (const result of quoteResults) {
+        if (result.status !== "fulfilled") {
+          logger.warn("ws: failed to fetch bootstrap order book", {
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          });
+          continue;
+        }
+
+        const { tokenId, book } = result.value;
         const snapshot = normalizeBookSnapshot({
           tokenId,
-          marketId: quote.book.market,
+          marketId: book.market,
           book: clobOrderBookSchema.parse({
-            ...quote.book,
-            timestamp: quote.book.timestamp ?? String(Date.now()),
-            hash: quote.book.hash ?? "",
+            ...book,
+            timestamp: book.timestamp ?? String(Date.now()),
+            hash: book.hash ?? "",
           }),
-          bestBid: String(quote.bestBid),
-          bestAsk: String(quote.bestAsk),
-          spread: String(quote.spread),
-          midpoint: String(quote.midpoint),
-          lastTradePrice: String(quote.lastTradePrice),
-          tickSize: quote.book.tick_size,
-          negRisk: quote.book.neg_risk,
+          tickSize: book.tick_size,
+          negRisk: book.neg_risk,
+          lastTradePrice: book.last_trade_price,
           lastUpdatedAt: now,
           source: "http",
         });

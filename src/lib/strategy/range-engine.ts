@@ -66,6 +66,7 @@ async function processTokenSide(
     lastTriggeredAt: Date | null;
     cooldownSeconds: number;
   },
+  market: Awaited<ReturnType<typeof getMarketById>>,
   tokenId: string,
   tokenLabel: string,
   params: TwoSidedRangeQuotingParams,
@@ -84,7 +85,6 @@ async function processTokenSide(
     return null;
   }
 
-  const market = await getMarketById(strategy.marketId);
   const bestBid = Number(quote.bestBid);
   const bestAsk = Number(quote.bestAsk);
   const midPrice = Number(quote.midpoint);
@@ -550,6 +550,7 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
         ...strategy,
         marketId: executionMarketId,
       },
+      market,
       staticTarget.tokenId,
       label,
       params,
@@ -563,6 +564,7 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
           ...strategy,
           marketId: executionMarketId,
         },
+        market,
         yesTokenId,
         "YES",
         params,
@@ -575,6 +577,7 @@ export async function executeRangeQuotingStrategy(strategyId: string) {
           ...strategy,
           marketId: executionMarketId,
         },
+        market,
         noTokenId,
         "NO",
         params,

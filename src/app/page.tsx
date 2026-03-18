@@ -4,8 +4,7 @@ import { SectionCard, StatCard, StatusPill, EmptyState } from "@/components/ui/p
 import { SubmitButton } from "@/components/forms/submit-button";
 import { getDashboardState, getRiskSettings } from "@/lib/db/settings";
 import { discoverMarkets } from "@/lib/polymarket/gamma";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
-import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
+import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 import { getTradingReadiness } from "@/lib/trading/readiness";
 import { formatDate, formatNumber, truncateHash } from "@/lib/utils";
 
@@ -21,10 +20,7 @@ export default async function DashboardPage() {
 
   const selectedMarket = markets[0];
   const selectedToken = selectedMarket?.clobTokenIds ? JSON.parse(selectedMarket.clobTokenIds)[0] : null;
-  const liveQuote = selectedToken ? getLiveMarketSnapshot(selectedToken) : null;
-  const quote =
-    liveQuote ??
-    (selectedToken ? await getMarketQuote(selectedToken).catch(() => null) : null);
+  const quote = selectedToken ? await getMarketQuotePreferWs(selectedToken).catch(() => null) : null;
 
   return (
     <ShellPage

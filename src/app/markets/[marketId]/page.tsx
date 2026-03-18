@@ -3,9 +3,8 @@ import { SubmitButton } from "@/components/forms/submit-button";
 import { MarketDetailBlock, MarketStats, OrderbookTable, OutcomeList, ShellPage } from "@/components/market-pages";
 import { CopyableId } from "@/components/ui/display";
 import { EmptyState, SectionCard, TextInput } from "@/components/ui/primitives";
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
+import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 import { getMarketById } from "@/lib/polymarket/gamma";
-import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +15,12 @@ export default async function MarketDetailPage({
   params: Promise<{ marketId: string }>;
 }) {
   const { marketId } = await params;
-  const market = await getMarketById(marketId);
+  const market = await getMarketById(marketId, { skipCache: true });
   const tokenIds = market.clobTokenIds ? JSON.parse(market.clobTokenIds) : [];
   const primaryTokenId = tokenIds[0];
-  const quote =
-    (primaryTokenId ? getLiveMarketSnapshot(primaryTokenId) : null) ??
-    (primaryTokenId ? await getMarketQuote(primaryTokenId).catch(() => null) : null);
+  const quote = primaryTokenId
+    ? await getMarketQuotePreferWs(primaryTokenId).catch(() => null)
+    : null;
 
   return (
     <ShellPage

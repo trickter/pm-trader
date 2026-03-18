@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getMarketQuote } from "@/lib/polymarket/clob-public";
-import { getLiveMarketSnapshot } from "@/lib/polymarket/ws";
+import { getMarketQuotePreferWs } from "@/lib/polymarket/clob-public";
 
 export async function GET(request: NextRequest) {
   const tokenId = request.nextUrl.searchParams.get("tokenId");
@@ -9,10 +8,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "tokenId is required" }, { status: 400 });
   }
 
-  const liveSnapshot = getLiveMarketSnapshot(tokenId);
-  const quote = liveSnapshot ?? (await getMarketQuote(tokenId));
+  const quote = await getMarketQuotePreferWs(tokenId);
   return NextResponse.json({
-    source: liveSnapshot ? "CLOB market WebSocket" : "CLOB HTTP snapshot",
+    source: quote.source === "ws" ? "CLOB market WebSocket" : "CLOB HTTP snapshot",
     quote,
   });
 }
