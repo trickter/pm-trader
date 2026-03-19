@@ -1,4 +1,4 @@
-import { runEngineNowAction } from "@/app/actions";
+import { runEngineNowAction } from "@/app/actions/engine";
 import { ShellPage, MarketStats } from "@/components/market-pages";
 import { SectionCard, StatCard, StatusPill, EmptyState } from "@/components/ui/primitives";
 import { SubmitButton } from "@/components/forms/submit-button";

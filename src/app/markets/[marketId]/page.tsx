@@ -1,4 +1,4 @@
-import { placeManualOrderAction } from "@/app/actions";
+import { placeManualOrderAction } from "@/app/actions/orders";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { MarketDetailBlock, MarketStats, OrderbookTable, OutcomeList, ShellPage } from "@/components/market-pages";
 import { CopyableId } from "@/components/ui/display";

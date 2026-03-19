@@ -1,4 +1,5 @@
-import { cancelAllOrdersAction, updateRiskSettingsAction } from "@/app/actions";
+import { cancelAllOrdersAction } from "@/app/actions/orders";
+import { updateRiskSettingsAction } from "@/app/actions/settings";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";
 import { EmptyState, SectionCard, StatCard, StatusPill, TextInput } from "@/components/ui/primitives";

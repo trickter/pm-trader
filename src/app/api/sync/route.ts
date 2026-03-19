@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { verifyBearerToken } from "@/lib/auth";
-import { listOpenOrders, listTrades } from "@/lib/polymarket/clob-trading";
-import { getPositions } from "@/lib/polymarket/data";
-import { env } from "@/lib/env";
-import { reconcileTradingState } from "@/lib/polymarket/ws";
 import { audit } from "@/lib/risk/engine";
+import { syncTradingData } from "@/lib/sync/trading";
 
 export async function POST(request: Request) {
   if (!verifyBearerToken(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await reconcileTradingState("manual");
-
-  const [openOrders, trades, positions] = await Promise.all([
-    listOpenOrders().catch(() => []),
-    listTrades().catch(() => []),
-    getPositions(env.POLYMARKET_TRADER_ADDRESS || undefined).catch(() => []),
-  ]);
+  const { openOrders, trades, positions } = await syncTradingData();
 
   await audit("sync_trading_views", "System", undefined, {
     openOrders: openOrders.length,

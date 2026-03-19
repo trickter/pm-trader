@@ -1,12 +1,9 @@
-import { StrategySide, StrategyType } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { verifyBearerToken } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { audit } from "@/lib/risk/engine";
-import { parseScopeParams } from "@/lib/strategy/config";
-import { orderbookImbalanceParamsSchema, thresholdBreakoutParamsSchema } from "@/lib/strategy/types";
+import { createStrategy } from "@/lib/strategy/create";
 
 const bodySchema = z.object({
   name: z.string().min(2),
@@ -38,41 +35,40 @@ export async function POST(request: Request) {
 
   const values = parsed.data;
 
-  const triggerParams =
-    values.type === "THRESHOLD_BREAKOUT"
-      ? thresholdBreakoutParamsSchema.parse({
-          threshold: values.threshold,
-          comparator: values.comparator,
-        })
-      : orderbookImbalanceParamsSchema.parse({
-          maxSpread: values.maxSpread,
-          minTopDepth: values.minTopDepth,
-          imbalanceRatio: values.imbalanceRatio,
-        });
-
-  const strategy = await db.strategy.create({
-    data: {
-      name: values.name,
-      type: values.type as StrategyType,
-      scopeType: "STATIC_MARKET",
-      scopeParams: parseScopeParams({
-        type: values.type as StrategyType,
-        values: {
-          marketId: values.marketId,
-          tokenId: values.tokenId,
-        },
-      }).scopeParams,
+  const commonInput = {
+    name: values.name,
+    scopeType: "STATIC_MARKET" as const,
+    scopeValues: {
       marketId: values.marketId,
       tokenId: values.tokenId,
-      side: values.side as StrategySide,
-      triggerParams,
-      maxOrderSize: values.maxOrderSize,
-      maxDailyTradeCount: values.maxDailyTradeCount,
-      cooldownSeconds: values.cooldownSeconds,
-      dryRun: values.dryRun,
-      enabled: values.enabled,
     },
-  });
+    side: values.side,
+    maxOrderSize: values.maxOrderSize,
+    maxDailyTradeCount: values.maxDailyTradeCount,
+    cooldownSeconds: values.cooldownSeconds,
+    dryRun: values.dryRun,
+    enabled: values.enabled,
+  };
+
+  const strategy =
+    values.type === "THRESHOLD_BREAKOUT"
+      ? await createStrategy({
+          ...commonInput,
+          type: values.type,
+          triggerValues: {
+            threshold: values.threshold,
+            comparator: values.comparator,
+          },
+        })
+      : await createStrategy({
+          ...commonInput,
+          type: values.type,
+          triggerValues: {
+            maxSpread: values.maxSpread,
+            minTopDepth: values.minTopDepth,
+            imbalanceRatio: values.imbalanceRatio,
+          },
+        });
 
   await audit("strategy_created", "Strategy", undefined, {
     name: values.name,

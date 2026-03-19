@@ -1,4 +1,4 @@
-import { updateRuntimeSettingsAction } from "@/app/actions";
+import { updateRuntimeSettingsAction } from "@/app/actions/settings";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";
 import { SectionCard, StatCard, StatusPill, TextInput, EmptyState } from "@/components/ui/primitives";

@@ -1,10 +1,10 @@
 import {
   createStrategyAction,
   deleteStrategyAction,
-  runEngineNowAction,
   runMarketScanAction,
   toggleStrategyEnabledAction,
-} from "@/app/actions";
+} from "@/app/actions/strategy";
+import { runEngineNowAction } from "@/app/actions/engine";
 import { ConfirmSubmitButton } from "@/components/forms/confirm-submit-button";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";

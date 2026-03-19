@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { syncTradingViewsAction } from "@/app/actions";
+import { syncTradingViewsAction } from "@/app/actions/engine";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { ShellPage } from "@/components/market-pages";
 import { StatCard } from "@/components/ui/primitives";
