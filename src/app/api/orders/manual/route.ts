@@ -1,26 +1,18 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 import { verifyBearerToken } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { placeLimitOrder } from "@/lib/polymarket/clob-trading";
 import { setupManualOrder } from "@/lib/orders/manual";
+import { manualOrderSchema } from "@/lib/orders/schemas";
 import { audit } from "@/lib/risk/engine";
-
-const bodySchema = z.object({
-  marketId: z.string().min(1),
-  tokenId: z.string().min(1),
-  side: z.enum(["BUY", "SELL"]),
-  size: z.number().positive(),
-  price: z.number().positive(),
-});
 
 export async function POST(request: Request) {
   if (!verifyBearerToken(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const parsed = bodySchema.safeParse(await request.json());
+  const parsed = manualOrderSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ error: "Validation failed", details: parsed.error.flatten() }, { status: 400 });
   }
