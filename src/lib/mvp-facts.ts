@@ -21,7 +21,7 @@ export const polymarketFacts = [
     usage: "Use official TS client for orderbook, spread, best price, midpoint and last trade price reads.",
     requiresAuth: false,
     adoptedInMvp: true,
-    uncertainty: "Realtime transport currently polls a server route instead of consuming WSS market channel payloads directly.",
+    uncertainty: "Realtime transport uses WebSocket market channels with HTTP polling as fallback.",
   },
   {
     capability: "CLOB authenticated trading",
@@ -44,13 +44,12 @@ export const polymarketFacts = [
     officialSource: "https://docs.polymarket.com/developers/CLOB/websocket/market-channel",
     usage: "Officially preferred for realtime market updates.",
     requiresAuth: false,
-    adoptedInMvp: false,
-    uncertainty: "Payload handling is left as TODO until a dedicated implementation pass validates event shapes and reconnect policy.",
+    adoptedInMvp: true,
+    uncertainty: "Reconnect uses exponential backoff; staleness detection falls back to HTTP polling.",
   },
 ] as const;
 
 export const humanConfirmationTodos = [
   "Gamma tag filter query parameters: docs should be re-checked before wiring server-side tag filtering.",
-  "CLOB market channel payload handling and reconnect policy before replacing polling.",
   "Whether the chosen live account needs explicit collateral/token allowance setup through official flows before first order.",
 ];

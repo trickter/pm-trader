@@ -15,9 +15,10 @@ Polymarket strategy trading system MVP built with Next.js App Router + TypeScrip
 - Dashboard with realtime market snapshot vs strategy state separation
 - Market discovery and search
 - Market detail with orderbook and manual limit order form
-- Two server-side strategies:
+- Three server-side strategies:
   - Threshold breakout
   - Spread / top-of-book imbalance
+  - Two-sided range quoting
 - Dry-run signal logging
 - Live order submission when server credentials are configured
 - Orders / trades / positions views with source labels
@@ -61,10 +62,13 @@ Set these server-only variables before using live CLOB order submission:
 - `npm run prisma:generate`
 - `npm run lint`
 - `npm run build`
+- `npm test` (vitest watch mode)
+- `npm run test:run` (single run)
+- `npm run test:e2e` (playwright)
 
 ## Known Limits
 
-- Realtime quotes currently use server-side polling behind `/api/quote`; official WSS market channel is left as a TODO until payload handling is fully confirmed.
+- Realtime quotes use WebSocket market channels with automatic reconnection; HTTP polling is used as fallback.
 - Tag filter query parameters are not wired yet because they still need one more documentation check.
 - Allowance / approval setup for first live trade is not automated in this MVP.
 - `POLY_PROXY` and `POLY_GNOSIS_SAFE` account modes are intentionally excluded.
